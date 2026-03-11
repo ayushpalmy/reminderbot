@@ -32,13 +32,15 @@ backend/
 ├── config/
 │   └── db.js             # PostgreSQL connection and initialization
 ├── routes/
-│   ├── webhook.js        # WhatsApp webhook endpoints (main logic)
+│   ├── webhook.js        # WhatsApp webhook endpoints (main logic) ⭐
 │   └── test.js           # Test endpoints for development
 ├── services/
 │   ├── reminderParser.js # OpenAI integration for parsing
 │   ├── userService.js    # User management (CRUD)
 │   ├── reminderService.js # Reminder management (CRUD)
-│   └── whatsappService.js # WhatsApp message sending
+│   ├── whatsappService.js # WhatsApp message sending
+│   ├── reminderScheduler.js # Cron job scheduler ⭐
+│   └── conversationService.js # Command handling & state ⭐
 ├── start.sh              # Startup script with env loading
 ├── package.json          # Node.js dependencies
 └── .env                  # Environment variables

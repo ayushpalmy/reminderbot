@@ -1,10 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const { getOrCreateUser } = require('../services/userService');
-const { createReminder, getUserReminders } = require('../services/reminderService');
+const { getOrCreateUser, getUserByPhone } = require('../services/userService');
+const { createReminder } = require('../services/reminderService');
 const { parseReminderMessage } = require('../services/reminderParser');
 const { sendReminderConfirmation, sendParseErrorMessage, sendWhatsAppMessage } = require('../services/whatsappService');
 const { markReminderDone, snoozeReminder } = require('../services/reminderScheduler');
+const { 
+  setUserState, 
+  getUserState, 
+  clearUserState,
+  getMostRecentReminder,
+  getActiveRemindersFormatted,
+  deleteReminder,
+  updateReminderTime
+} = require('../services/conversationService');
 const moment = require('moment-timezone');
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -75,97 +84,196 @@ router.post('/', async (req, res) => {
         // Process only text messages
         if (messageType === 'text' && messageBody) {
           const messageUpper = messageBody.trim().toUpperCase();
+          const messageTrimmed = messageBody.trim();
           
-          // Check for command responses (DONE, SNOOZE, RESCHEDULE)
-          if (messageUpper === 'DONE' || messageUpper === 'SNOOZE' || messageUpper === 'RESCHEDULE') {
-            console.log(`[PROCESSING] Detected command: ${messageUpper}`);
+          // Get or create user first (needed for all flows)
+          const user = await getOrCreateUser(from);
+          
+          // Check for commands
+          if (messageUpper === 'DONE') {
+            console.log('[PROCESSING] Detected command: DONE');
             
             try {
-              // Get or create user first
-              const user = await getOrCreateUser(from);
+              const recentReminder = await getMostRecentReminder(user.id);
               
-              // Get user's most recent active reminder
-              const reminders = await getUserReminders(user.id);
-              const activeReminder = reminders.find(r => !r.is_done);
-              
-              if (!activeReminder) {
+              if (!recentReminder) {
                 await sendWhatsAppMessage(from, "You don't have any active reminders.");
-                console.log('[PROCESSING] No active reminders found for user');
               } else {
-                if (messageUpper === 'DONE') {
-                  await markReminderDone(activeReminder.id);
-                  await sendWhatsAppMessage(from, `✅ Reminder marked as complete: "${activeReminder.reminder_text}"`);
-                  console.log(`[PROCESSING] ✓ Marked reminder ${activeReminder.id} as done`);
-                  
-                } else if (messageUpper === 'SNOOZE') {
-                  const snoozed = await snoozeReminder(activeReminder.id);
-                  const snoozeTime = moment.tz(snoozed.remind_at, 'Asia/Kolkata').format('h:mm A');
-                  await sendWhatsAppMessage(from, `⏰ Reminder snoozed until ${snoozeTime}`);
-                  console.log(`[PROCESSING] ✓ Snoozed reminder ${activeReminder.id} by 2 hours`);
-                  
-                } else if (messageUpper === 'RESCHEDULE') {
-                  await sendWhatsAppMessage(
-                    from, 
-                    `To reschedule, send a new reminder message like:\n"remind me to ${activeReminder.reminder_text} tomorrow at 3pm"`
-                  );
-                  console.log(`[PROCESSING] Sent reschedule instructions`);
-                }
+                await markReminderDone(recentReminder.id);
+                await sendWhatsAppMessage(from, "✅ Marked as done!");
+                console.log(`[PROCESSING] ✓ Marked reminder ${recentReminder.id} as done`);
               }
-              
             } catch (error) {
               console.error('[PROCESSING ERROR]:', error);
               await sendWhatsAppMessage(from, "Sorry, there was an error processing your request.");
             }
             
-          } else {
-            // Not a command - parse as new reminder
-            console.log('[PROCESSING] Parsing reminder with OpenAI...');
+          } else if (messageUpper === 'SNOOZE') {
+            console.log('[PROCESSING] Detected command: SNOOZE');
             
             try {
-              const parsedReminder = await parseReminderMessage(messageBody);
+              const recentReminder = await getMostRecentReminder(user.id);
               
-              if (parsedReminder) {
-                console.log('[PROCESSING] ✓ Successfully parsed reminder');
-                console.log('[PROCESSING] Reminder text:', parsedReminder.reminder_text);
-                console.log('[PROCESSING] Remind at:', parsedReminder.remind_at);
-                console.log('[PROCESSING] Repeat type:', parsedReminder.repeat_type);
-                
-                // Get or create user
-                console.log('[PROCESSING] Getting/creating user...');
-                const user = await getOrCreateUser(from);
-                console.log('[PROCESSING] ✓ User ID:', user.id);
-                
-                // Create reminder in database
-                console.log('[PROCESSING] Creating reminder in database...');
-                const reminder = await createReminder(
-                  user.id,
-                  parsedReminder.reminder_text,
-                  parsedReminder.remind_at,
-                  parsedReminder.repeat_type
-                );
-                console.log('[PROCESSING] ✓ Reminder created with ID:', reminder.id);
-                
-                // Send confirmation to user
-                console.log('[PROCESSING] Sending confirmation to user...');
-                await sendReminderConfirmation(
-                  from,
-                  parsedReminder.reminder_text,
-                  parsedReminder.formatted_date,
-                  parsedReminder.formatted_time,
-                  parsedReminder.repeat_type
-                );
-                console.log('[PROCESSING] ✓ Confirmation sent\n');
-                
+              if (!recentReminder) {
+                await sendWhatsAppMessage(from, "You don't have any active reminders.");
               } else {
-                // Not a reminder or couldn't parse
-                console.log('[PROCESSING] ✗ Message is not a reminder request');
-                await sendParseErrorMessage(from);
+                await snoozeReminder(recentReminder.id);
+                await sendWhatsAppMessage(from, "⏰ Snoozed for 2 hours!");
+                console.log(`[PROCESSING] ✓ Snoozed reminder ${recentReminder.id} by 2 hours`);
               }
-              
             } catch (error) {
               console.error('[PROCESSING ERROR]:', error);
-              // Send error message to user
-              await sendParseErrorMessage(from);
+              await sendWhatsAppMessage(from, "Sorry, there was an error processing your request.");
+            }
+            
+          } else if (messageUpper === 'RESCHEDULE') {
+            console.log('[PROCESSING] Detected command: RESCHEDULE');
+            
+            try {
+              const recentReminder = await getMostRecentReminder(user.id);
+              
+              if (!recentReminder) {
+                await sendWhatsAppMessage(from, "You don't have any active reminders.");
+              } else {
+                // Set user state to waiting for reschedule time
+                setUserState(from, 'waiting_reschedule', { reminderId: recentReminder.id });
+                await sendWhatsAppMessage(
+                  from, 
+                  "When should I remind you?\nExample: tomorrow 9PM or 25th March 6PM"
+                );
+                console.log(`[PROCESSING] Waiting for reschedule time from user`);
+              }
+            } catch (error) {
+              console.error('[PROCESSING ERROR]:', error);
+              await sendWhatsAppMessage(from, "Sorry, there was an error processing your request.");
+            }
+            
+          } else if (messageUpper === 'MY REMINDERS') {
+            console.log('[PROCESSING] Detected command: MY REMINDERS');
+            
+            try {
+              const reminders = await getActiveRemindersFormatted(user.id);
+              
+              if (reminders.length === 0) {
+                await sendWhatsAppMessage(from, "You don't have any active reminders.");
+              } else {
+                const reminderList = reminders.map(r => r.displayText).join('\n\n');
+                const message = `📝 Your Active Reminders:\n\n${reminderList}\n\nTo delete: Send DELETE [number]`;
+                await sendWhatsAppMessage(from, message);
+                console.log(`[PROCESSING] Sent ${reminders.length} reminders to user`);
+              }
+            } catch (error) {
+              console.error('[PROCESSING ERROR]:', error);
+              await sendWhatsAppMessage(from, "Sorry, there was an error fetching your reminders.");
+            }
+            
+          } else if (messageUpper.startsWith('DELETE ')) {
+            console.log('[PROCESSING] Detected command: DELETE');
+            
+            try {
+              const numberMatch = messageTrimmed.match(/DELETE\s+(\d+)/i);
+              
+              if (!numberMatch) {
+                await sendWhatsAppMessage(from, "Please specify a reminder number. Example: DELETE 2");
+              } else {
+                const reminderNumber = parseInt(numberMatch[1]);
+                const reminders = await getActiveRemindersFormatted(user.id);
+                
+                if (reminderNumber < 1 || reminderNumber > reminders.length) {
+                  await sendWhatsAppMessage(from, `Invalid reminder number. You have ${reminders.length} active reminder(s).`);
+                } else {
+                  const reminderToDelete = reminders[reminderNumber - 1];
+                  const deleted = await deleteReminder(reminderToDelete.id, user.id);
+                  
+                  if (deleted) {
+                    await sendWhatsAppMessage(from, "🗑️ Reminder deleted");
+                    console.log(`[PROCESSING] ✓ Deleted reminder ${reminderToDelete.id}`);
+                  } else {
+                    await sendWhatsAppMessage(from, "Could not delete reminder. Please try again.");
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('[PROCESSING ERROR]:', error);
+              await sendWhatsAppMessage(from, "Sorry, there was an error deleting the reminder.");
+            }
+            
+          } else {
+            // Check if user is in a conversation state (e.g., waiting for reschedule time)
+            const userState = getUserState(from);
+            
+            if (userState && userState.state === 'waiting_reschedule') {
+              console.log('[PROCESSING] User in reschedule mode, parsing new time...');
+              
+              try {
+                // Parse the new time with OpenAI
+                const parsedTime = await parseReminderMessage(`remind me to placeholder ${messageTrimmed}`);
+                
+                if (parsedTime && parsedTime.remind_at) {
+                  const reminderId = userState.data.reminderId;
+                  const updated = await updateReminderTime(reminderId, parsedTime.remind_at);
+                  
+                  const formattedDate = moment.tz(updated.remind_at, 'Asia/Kolkata').format('Do MMMM YYYY');
+                  const formattedTime = moment.tz(updated.remind_at, 'Asia/Kolkata').format('h:mm A');
+                  
+                  await sendWhatsAppMessage(from, `✅ Rescheduled to ${formattedDate} at ${formattedTime}`);
+                  console.log(`[PROCESSING] ✓ Rescheduled reminder ${reminderId}`);
+                  
+                  // Clear state
+                  clearUserState(from);
+                } else {
+                  await sendWhatsAppMessage(from, "I couldn't understand that time. Please try again with a format like: tomorrow 9PM or 25th March 6PM");
+                }
+              } catch (error) {
+                console.error('[PROCESSING ERROR]:', error);
+                await sendWhatsAppMessage(from, "Sorry, I couldn't process that time. Please try again.");
+              }
+              
+            } else {
+              // Not a command and not in conversation state - parse as new reminder
+              console.log('[PROCESSING] Parsing as new reminder with OpenAI...');
+              
+              try {
+                const parsedReminder = await parseReminderMessage(messageBody);
+                
+                if (parsedReminder) {
+                  console.log('[PROCESSING] ✓ Successfully parsed reminder');
+                  console.log('[PROCESSING] Reminder text:', parsedReminder.reminder_text);
+                  console.log('[PROCESSING] Remind at:', parsedReminder.remind_at);
+                  console.log('[PROCESSING] Repeat type:', parsedReminder.repeat_type);
+                  
+                  // Create reminder in database
+                  console.log('[PROCESSING] Creating reminder in database...');
+                  const reminder = await createReminder(
+                    user.id,
+                    parsedReminder.reminder_text,
+                    parsedReminder.remind_at,
+                    parsedReminder.repeat_type
+                  );
+                  console.log('[PROCESSING] ✓ Reminder created with ID:', reminder.id);
+                  
+                  // Send confirmation to user
+                  console.log('[PROCESSING] Sending confirmation to user...');
+                  await sendReminderConfirmation(
+                    from,
+                    parsedReminder.reminder_text,
+                    parsedReminder.formatted_date,
+                    parsedReminder.formatted_time,
+                    parsedReminder.repeat_type
+                  );
+                  console.log('[PROCESSING] ✓ Confirmation sent\n');
+                  
+                } else {
+                  // Not a reminder or couldn't parse
+                  console.log('[PROCESSING] ✗ Message is not a reminder request');
+                  await sendParseErrorMessage(from);
+                }
+                
+              } catch (error) {
+                console.error('[PROCESSING ERROR]:', error);
+                // Send error message to user
+                await sendParseErrorMessage(from);
+              }
             }
           }
         } else {
