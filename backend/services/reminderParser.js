@@ -1,17 +1,13 @@
-const OpenAI = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const moment = require('moment-timezone');
 
-// Note: Emergent universal key works through their Python SDK
-// For Node.js, you need your own OpenAI API key
-// Get it from: https://platform.openai.com/api-keys
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
 
 /**
- * Parse a natural language reminder message using OpenAI
+ * Parse a natural language reminder message using Google Gemini
  * @param {string} message - The user's message
  * @returns {Promise<Object>} - Parsed reminder data or null if not a reminder
  */
@@ -52,23 +48,26 @@ Respond ONLY with valid JSON in this exact format:
 OR if not a reminder:
 {
   "is_reminder": false
-}`;
+}
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: message }
-      ],
-      temperature: 0.3,
-      max_tokens: 200,
-    });
+User message: ${message}`;
 
-    const content = response.choices[0].message.content.trim();
-    console.log('\n[OPENAI RESPONSE]:', content);
+    const result = await model.generateContent(systemPrompt);
+    const response = await result.response;
+    const content = response.text().trim();
+    
+    console.log('\n[GEMINI RESPONSE]:', content);
+    
+    // Extract JSON from response (Gemini sometimes adds markdown code blocks)
+    let jsonContent = content;
+    if (content.includes('```json')) {
+      jsonContent = content.match(/```json\n([\s\S]*?)\n```/)?.[1] || content;
+    } else if (content.includes('```')) {
+      jsonContent = content.match(/```\n([\s\S]*?)\n```/)?.[1] || content;
+    }
     
     // Parse the JSON response
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(jsonContent.trim());
     
     if (!parsed.is_reminder) {
       return null;
@@ -77,7 +76,7 @@ OR if not a reminder:
     // Validate and convert remind_at to Date object
     const remindAtMoment = moment.tz(parsed.remind_at, TIMEZONE);
     if (!remindAtMoment.isValid()) {
-      console.error('Invalid date format from OpenAI:', parsed.remind_at);
+      console.error('Invalid date format from Gemini:', parsed.remind_at);
       return null;
     }
     
@@ -90,9 +89,9 @@ OR if not a reminder:
     };
     
   } catch (error) {
-    console.error('Error parsing reminder with OpenAI:', error);
+    console.error('Error parsing reminder with Gemini:', error);
     if (error.response) {
-      console.error('OpenAI API Error:', error.response.data);
+      console.error('Gemini API Error:', error.response);
     }
     throw error;
   }

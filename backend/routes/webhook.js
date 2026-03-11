@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getOrCreateUser, getUserByPhone } = require('../services/userService');
-const { createReminder } = require('../services/reminderService');
+const { createReminder, getActiveReminderCount } = require('../services/reminderService');
 const { parseReminderMessage } = require('../services/reminderParser');
 const { sendReminderConfirmation, sendParseErrorMessage, sendWhatsAppMessage } = require('../services/whatsappService');
 const { markReminderDone, snoozeReminder } = require('../services/reminderScheduler');
@@ -231,7 +231,7 @@ router.post('/', async (req, res) => {
               
             } else {
               // Not a command and not in conversation state - parse as new reminder
-              console.log('[PROCESSING] Parsing as new reminder with OpenAI...');
+              console.log('[PROCESSING] Parsing as new reminder with Gemini...');
               
               try {
                 const parsedReminder = await parseReminderMessage(messageBody);
@@ -241,6 +241,21 @@ router.post('/', async (req, res) => {
                   console.log('[PROCESSING] Reminder text:', parsedReminder.reminder_text);
                   console.log('[PROCESSING] Remind at:', parsedReminder.remind_at);
                   console.log('[PROCESSING] Repeat type:', parsedReminder.repeat_type);
+                  
+                  // Check free plan limit
+                  if (user.plan_type === 'free') {
+                    const activeCount = await getActiveReminderCount(user.id);
+                    console.log('[PROCESSING] User is on free plan. Active reminders:', activeCount);
+                    
+                    if (activeCount >= 3) {
+                      console.log('[PROCESSING] ✗ Free plan limit reached (3 reminders)');
+                      await sendWhatsAppMessage(
+                        from,
+                        "⚠️ Free plan allows only 3 reminders. Upgrade to Personal plan for ₹49/month — reply UPGRADE to get the payment link"
+                      );
+                      return; // Don't create the reminder
+                    }
+                  }
                   
                   // Create reminder in database
                   console.log('[PROCESSING] Creating reminder in database...');

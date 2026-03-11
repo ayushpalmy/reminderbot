@@ -1,6 +1,24 @@
 const { pool } = require('../config/db');
 
 /**
+ * Get count of active reminders for a user
+ * @param {number} userId 
+ * @returns {Promise<number>}
+ */
+async function getActiveReminderCount(userId) {
+  try {
+    const result = await pool.query(
+      'SELECT COUNT(*) as count FROM reminders WHERE user_id = $1 AND is_done = false',
+      [userId]
+    );
+    return parseInt(result.rows[0].count);
+  } catch (error) {
+    console.error('Error getting active reminder count:', error);
+    throw error;
+  }
+}
+
+/**
  * Create a new reminder
  * @param {number} userId 
  * @param {string} reminderText 
@@ -81,6 +99,7 @@ async function markReminderDone(reminderId) {
 }
 
 module.exports = {
+  getActiveReminderCount,
   createReminder,
   getUserReminders,
   getPendingReminders,
