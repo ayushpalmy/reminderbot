@@ -5,6 +5,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { initDatabase } = require('./config/db');
 const { initializeScheduler } = require('./services/reminderScheduler');
+const { initializeKeepalive } = require('./services/keepalive');
 const webhookRoutes = require('./routes/webhook');
 const testRoutes = require('./routes/test');
 const razorpayWebhookRoutes = require('./routes/razorpayWebhook');
@@ -92,6 +93,9 @@ initDatabase()
       
       // Initialize reminder scheduler after server starts
       initializeScheduler();
+      
+      // Initialize keepalive mechanism (prevents Render free tier sleep)
+      initializeKeepalive();
     });
   })
   .catch((err) => {

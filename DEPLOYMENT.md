@@ -62,6 +62,7 @@ Add these in the "Environment" tab:
 ```bash
 NODE_ENV=production
 PORT=8001
+APP_URL=https://your-app-name.onrender.com
 DATABASE_URL=[paste your PostgreSQL internal URL]
 WHATSAPP_TOKEN=your_whatsapp_access_token
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
@@ -75,6 +76,8 @@ TIMEZONE=Asia/Kolkata
 CORS_ORIGINS=*
 ```
 
+**Important:** Replace `your-app-name` in `APP_URL` with your actual Render service name.
+
 #### Step 4: Configure Health Check
 
 In "Settings" → "Health Check Path": `/health`
@@ -82,6 +85,17 @@ In "Settings" → "Health Check Path": `/health`
 #### Step 5: Deploy
 
 Click "Create Web Service" and wait for deployment to complete.
+
+#### Step 6: Enable Keepalive (Free Tier)
+
+After deployment, update `APP_URL` with your actual service URL:
+1. Note your service URL: `https://your-service-name.onrender.com`
+2. Go to "Environment" tab
+3. Update `APP_URL` with your actual URL
+4. Click "Save Changes"
+5. Service will restart automatically
+
+**Why?** Keepalive pings the server every 10 minutes to prevent free tier sleep.
 
 ---
 

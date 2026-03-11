@@ -4,7 +4,7 @@ services:
     name: whatsapp-reminder-bot
     env: node
     region: singapore
-    plan: starter
+    plan: free
     buildCommand: cd backend && yarn install
     startCommand: cd backend && node server.js
     healthCheckPath: /health
@@ -13,6 +13,8 @@ services:
         value: production
       - key: PORT
         value: 8001
+      - key: APP_URL
+        value: https://whatsapp-reminder-bot.onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: reminder-bot-db
@@ -41,7 +43,7 @@ services:
 databases:
   # PostgreSQL Database
   - name: reminder-bot-db
-    plan: starter
+    plan: free
     databaseName: whatsapp_bot_db
     user: whatsapp_bot
     region: singapore
