@@ -8,6 +8,7 @@ const { initializeScheduler } = require('./services/reminderScheduler');
 const webhookRoutes = require('./routes/webhook');
 const testRoutes = require('./routes/test');
 const razorpayWebhookRoutes = require('./routes/razorpayWebhook');
+const adminRoutes = require('./routes/admin');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -37,6 +38,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Routes
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/test', testRoutes);
+app.use('/admin', adminRoutes);
 
 // Root endpoint
 app.get('/api', (req, res) => {
