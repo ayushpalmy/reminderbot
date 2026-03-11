@@ -52,9 +52,21 @@ app.get('/api', (req, res) => {
   });
 });
 
-// Health check endpoint
+// Health check endpoints (for Render and monitoring)
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString() 
+  });
+});
+
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.status(200).json({ 
+    status: 'ok', 
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString() 
+  });
 });
 
 // Error handling middleware

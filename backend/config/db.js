@@ -1,14 +1,13 @@
 const { Pool } = require('pg');
 
+// Use environment variables for database connection
+// On Render, DATABASE_URL is provided automatically
 const pool = new Pool({
-  user: 'whatsapp_bot',
-  host: 'localhost',
-  database: 'whatsapp_bot_db',
-  password: 'whatsapp_bot_pass',
-  port: 5432,
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 5000,
 });
 
 // Test database connection

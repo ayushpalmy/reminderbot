@@ -190,6 +190,27 @@ router.post('/', async (req, res) => {
               await sendWhatsAppMessage(from, "Sorry, there was an error generating the payment link. Please try again later.");
             }
             
+          } else if (messageUpper === 'HELP') {
+            console.log('[PROCESSING] Detected command: HELP');
+            
+            try {
+              const helpMessage = `🤖 ReminderBot Commands:
+• Just type naturally to set a reminder
+• MY REMINDERS — see all your reminders
+• DONE — mark last reminder complete
+• SNOOZE — remind me in 2 hours
+• RESCHEDULE — change reminder time
+• DELETE [number] — delete a reminder
+• UPGRADE — get Personal plan ₹49/month
+• HELP — show this menu`;
+              
+              await sendWhatsAppMessage(from, helpMessage);
+              console.log('[PROCESSING] ✓ Help message sent');
+            } catch (error) {
+              console.error('[PROCESSING ERROR]:', error);
+              await sendWhatsAppMessage(from, "Sorry, there was an error sending the help message.");
+            }
+            
           } else if (messageUpper.startsWith('DELETE ')) {
             console.log('[PROCESSING] Detected command: DELETE');
             

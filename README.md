@@ -1,52 +1,171 @@
-# WhatsApp Reminder Bot Backend
+# WhatsApp Reminder Bot
 
-A Node.js/Express backend for a WhatsApp reminder bot using Meta's WhatsApp Cloud API and PostgreSQL.
+A fully-featured WhatsApp bot for setting and managing reminders with natural language processing, payment integration, and an admin dashboard.
 
-## Features
+## 🌟 Features
 
-- ✅ WhatsApp Cloud API integration
-- ✅ Webhook verification endpoint (GET)
-- ✅ Webhook receiver for incoming messages (POST)
-- ✅ **Natural language reminder parsing with OpenAI GPT-4o-mini**
-- ✅ **Automatic user creation and management**
-- ✅ **Reminder storage with repeat types (once/daily/weekly/monthly)**
-- ✅ **WhatsApp message sending for confirmations**
-- ✅ **IST timezone support (Asia/Kolkata)**
-- ✅ PostgreSQL database with proper schema
-- ✅ User management
-- ✅ Reminder storage
-- ✅ Subscription tracking
+- 🤖 **Natural Language Processing** - Set reminders naturally: "remind me to pay bills tomorrow at 6pm"
+- 📅 **Recurring Reminders** - Daily, weekly, and monthly reminders
+- 💬 **Smart Commands** - DONE, SNOOZE, RESCHEDULE, DELETE, MY REMINDERS
+- 💳 **Payment Integration** - Razorpay payment for plan upgrades (₹49/month)
+- 📊 **Admin Dashboard** - Monitor users, reminders, and stats
+- 🔔 **Auto Scheduling** - Cron job sends reminders automatically
+- 🎨 **Free & Paid Plans** - Free (3 reminders) / Personal (unlimited)
 
-## Tech Stack
+## 🚀 Quick Start
 
-- **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database**: PostgreSQL 15
-- **API**: Meta WhatsApp Cloud API
+### Prerequisites
+- Node.js 16+ 
+- PostgreSQL 15+
+- WhatsApp Business Account
+- Google Gemini API Key (for NLP)
+- Razorpay Account (for payments)
 
-## Project Structure
+### Local Development
 
-```
-backend/
-├── server.js              # Main Express application
-├── config/
-│   └── db.js             # PostgreSQL connection and initialization
-├── routes/
-│   ├── webhook.js        # WhatsApp webhook endpoints (main logic) ⭐
-│   └── test.js           # Test endpoints for development
-├── services/
-│   ├── reminderParser.js # OpenAI integration for parsing
-│   ├── userService.js    # User management (CRUD)
-│   ├── reminderService.js # Reminder management (CRUD)
-│   ├── whatsappService.js # WhatsApp message sending
-│   ├── reminderScheduler.js # Cron job scheduler ⭐
-│   └── conversationService.js # Command handling & state ⭐
-├── start.sh              # Startup script with env loading
-├── package.json          # Node.js dependencies
-└── .env                  # Environment variables
+1. **Clone Repository**
+```bash
+git clone https://github.com/yourusername/whatsapp-reminder-bot.git
+cd whatsapp-reminder-bot
 ```
 
-## Database Schema
+2. **Install Dependencies**
+```bash
+cd backend
+yarn install
+```
+
+3. **Set Up PostgreSQL**
+```bash
+sudo service postgresql start
+sudo -u postgres psql
+CREATE DATABASE whatsapp_bot_db;
+CREATE USER whatsapp_bot WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE whatsapp_bot_db TO whatsapp_bot;
+\q
+```
+
+4. **Configure Environment**
+```bash
+cp .env.example .env
+nano .env
+```
+
+Fill in your API keys:
+- `WHATSAPP_TOKEN` - From Meta for Developers
+- `GEMINI_API_KEY` - From Google AI Studio
+- `RAZORPAY_KEY_ID` & `RAZORPAY_KEY_SECRET` - From Razorpay Dashboard
+- `DATABASE_URL` - Your PostgreSQL connection string
+- `ADMIN_PASSWORD` - Strong password for admin dashboard
+
+5. **Start Server**
+```bash
+node server.js
+```
+
+Server starts on `http://localhost:8001`
+
+### Deploy to Render
+
+See [DEPLOYMENT.md](/app/DEPLOYMENT.md) for detailed deployment instructions.
+
+**Quick Deploy:**
+1. Fork this repository
+2. Connect to [Render](https://render.com)
+3. Create new Blueprint
+4. Add environment variables
+5. Done! ✅
+
+## 📱 WhatsApp Commands
+
+### For Users
+- **Set Reminder:** Just type naturally
+  - "remind me to call mom tomorrow at 6pm"
+  - "remind me to take medicine every day at 9am"
+  - "remind me to pay rent on 1st every month"
+
+- **MY REMINDERS** - View all active reminders
+- **DONE** - Mark last reminder as complete
+- **SNOOZE** - Postpone reminder by 2 hours
+- **RESCHEDULE** - Change reminder time
+- **DELETE [number]** - Delete specific reminder
+- **UPGRADE** - Get payment link for Personal plan
+- **HELP** - Show command menu
+
+### Plans
+- **Free Plan:** 3 active reminders
+- **Personal Plan:** ₹49/month, unlimited reminders
+
+## 🎯 Admin Dashboard
+
+Access at `/admin` with password authentication.
+
+**Displays:**
+- Total users registered
+- Free vs Paid plan distribution
+- Active reminders count
+- Reminders sent today
+- Last 10 users who joined
+
+**URL:** `https://your-app.onrender.com/admin`
+
+## 🔧 API Endpoints
+
+### Public Endpoints
+- `GET /health` - Health check
+- `GET /api/webhook` - WhatsApp webhook verification
+- `POST /api/webhook` - Receive WhatsApp messages
+- `POST /api/razorpay/webhook` - Payment confirmations
+
+### Admin Endpoints
+- `GET /admin` - Admin dashboard (password protected)
+
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│              WhatsApp User                   │
+└────────────────┬────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────┐
+│         WhatsApp Cloud API (Meta)           │
+└────────────────┬────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────┐
+│          Webhook Handler (Express)          │
+│  • Parse messages                            │
+│  • Command detection                         │
+│  • User management                           │
+└────────────────┬────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────┐
+│       Google Gemini API (NLP)               │
+│  • Parse natural language                    │
+│  • Extract reminder details                  │
+└────────────────┬────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────┐
+│         PostgreSQL Database                  │
+│  • Users table                               │
+│  • Reminders table                           │
+│  • Subscriptions table                       │
+└────────────────┬────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────────┐
+│        Cron Scheduler (node-cron)           │
+│  • Runs every minute                         │
+│  • Checks pending reminders                  │
+│  • Sends via WhatsApp                        │
+│  • Updates next occurrence                   │
+└─────────────────────────────────────────────┘
+```
+
+## 🗄️ Database Schema
 
 ### Users Table
 ```sql
@@ -62,11 +181,12 @@ CREATE TABLE users (
 ```sql
 CREATE TABLE reminders (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
   reminder_text TEXT NOT NULL,
   remind_at TIMESTAMP NOT NULL,
   repeat_type VARCHAR(20) DEFAULT 'once',
   is_done BOOLEAN DEFAULT false,
+  last_sent_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
@@ -75,7 +195,7 @@ CREATE TABLE reminders (
 ```sql
 CREATE TABLE subscriptions (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
   plan VARCHAR(50) NOT NULL,
   status VARCHAR(20) DEFAULT 'active',
   started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -83,290 +203,69 @@ CREATE TABLE subscriptions (
 );
 ```
 
-## API Endpoints
+## 📦 Tech Stack
 
-### Root Endpoint
-```
-GET /api
-```
-Returns API information and available endpoints.
+- **Backend:** Node.js, Express.js
+- **Database:** PostgreSQL
+- **NLP:** Google Gemini (gemini-1.5-flash)
+- **Payments:** Razorpay
+- **Messaging:** WhatsApp Cloud API (Meta)
+- **Scheduling:** node-cron
+- **Deployment:** Render.com
 
-### Health Check
-```
-GET /api/health
-```
-Returns server health status.
+## 🔐 Security
 
-### Webhook Verification (Meta)
-```
-GET /api/webhook?hub.mode=subscribe&hub.verify_token=<YOUR_TOKEN>&hub.challenge=<CHALLENGE>
-```
-Verifies webhook with Meta's WhatsApp Cloud API.
+- Password-protected admin dashboard
+- Webhook signature verification (Razorpay)
+- WhatsApp token authentication
+- Environment variable based configuration
+- SQL injection prevention (parameterized queries)
+- HTTPS required in production
 
-**Parameters:**
-- `hub.mode`: Must be "subscribe"
-- `hub.verify_token`: Must match `WHATSAPP_VERIFY_TOKEN` in .env
-- `hub.challenge`: Challenge string from Meta
+## 📚 Documentation
 
-**Response:**
-Returns the challenge string if verification succeeds.
+- [DEPLOYMENT.md](/app/DEPLOYMENT.md) - Render deployment guide
+- [RAZORPAY_INTEGRATION.md](/app/RAZORPAY_INTEGRATION.md) - Payment setup
+- [SCHEDULER_IMPLEMENTATION.md](/app/SCHEDULER_IMPLEMENTATION.md) - Cron job details
+- [COMMAND_HANDLING_COMPLETE.md](/app/COMMAND_HANDLING_COMPLETE.md) - Commands guide
+- [ADMIN_DASHBOARD.md](/app/ADMIN_DASHBOARD.md) - Dashboard usage
 
-### Webhook Receiver
-```
-POST /api/webhook
-```
-Receives incoming WhatsApp messages from Meta.
+## 🤝 Contributing
 
-**Request Body:**
-```json
-{
-  "object": "whatsapp_business_account",
-  "entry": [{
-    "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
-    "changes": [{
-      "value": {
-        "messaging_product": "whatsapp",
-        "metadata": {
-          "display_phone_number": "PHONE_NUMBER",
-          "phone_number_id": "PHONE_NUMBER_ID"
-        },
-        "messages": [{
-          "from": "SENDER_PHONE_NUMBER",
-          "id": "MESSAGE_ID",
-          "timestamp": "TIMESTAMP",
-          "text": {
-            "body": "MESSAGE_TEXT"
-          },
-          "type": "text"
-        }]
-      }
-    }]
-  }]
-}
-```
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
 
-**Response:**
-```json
-{
-  "status": "received"
-}
-```
+## 📄 License
 
-## Environment Variables
+MIT License - see LICENSE file for details
 
-Create a `.env` file in the backend directory with the following variables:
+## 🙏 Acknowledgments
 
-```env
-PORT=8001
-DATABASE_URL=postgresql://whatsapp_bot:whatsapp_bot_pass@localhost:5432/whatsapp_bot_db
+- Meta for WhatsApp Cloud API
+- Google for Gemini AI
+- Razorpay for payment infrastructure
+- Render for hosting platform
 
-# WhatsApp Cloud API Credentials (Update these)
-WHATSAPP_TOKEN=your_whatsapp_access_token_here
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id_here
+## 📞 Support
 
-# Webhook Verification Token
-WHATSAPP_VERIFY_TOKEN=verify_token_8f9a2b3c4d5e6f7g8h9i0j1k2l3m4n5o
+For issues and questions:
+- Open an issue on GitHub
+- Check documentation in `/app` directory
+- Review logs for troubleshooting
 
-# OpenAI API Key (Get from https://platform.openai.com/api-keys)
-OPENAI_API_KEY=your_openai_api_key_here
+## 🚧 Roadmap
 
-# Timezone for reminders
-TIMEZONE=Asia/Kolkata
+- [ ] Multi-language support
+- [ ] Voice message reminders
+- [ ] Integration with Google Calendar
+- [ ] Email notifications
+- [ ] Mobile app for admin dashboard
+- [ ] Analytics and insights
+- [ ] Team collaboration features
 
-# CORS Settings
-CORS_ORIGINS=*
-```
+---
 
-## Setup Instructions
-
-### 1. Install Dependencies
-```bash
-cd /app/backend
-yarn install
-```
-
-### 2. Set Up PostgreSQL
-PostgreSQL is already installed and running. The database `whatsapp_bot_db` and user `whatsapp_bot` are created automatically.
-
-### 3. Configure WhatsApp Cloud API
-
-To get your WhatsApp credentials:
-
-1. Go to [Meta for Developers](https://developers.facebook.com/)
-2. Create a new app or select an existing one
-3. Add "WhatsApp" product to your app
-4. Navigate to WhatsApp > API Setup
-5. Copy the **Access Token** and **Phone Number ID**
-6. Update `.env` file with these values:
-   ```env
-   WHATSAPP_TOKEN=your_actual_access_token
-   WHATSAPP_PHONE_NUMBER_ID=your_actual_phone_number_id
-   ```
-
-### 4. Configure Webhook in Meta Dashboard
-
-1. In your Meta app, go to WhatsApp > Configuration
-2. Click "Edit" next to Webhook
-3. Enter your callback URL:
-   ```
-   https://your-app-domain.preview.emergentagent.com/api/webhook
-   ```
-4. Enter the verify token from your `.env` file:
-   ```
-   verify_token_8f9a2b3c4d5e6f7g8h9i0j1k2l3m4n5o
-   ```
-5. Click "Verify and Save"
-6. Subscribe to webhook fields: `messages`
-
-### 5. Start the Server
-
-The server is managed by supervisor and starts automatically.
-
-To manually restart:
-```bash
-sudo supervisorctl restart backend
-```
-
-To check status:
-```bash
-sudo supervisorctl status backend
-```
-
-To view logs:
-```bash
-tail -f /var/log/supervisor/backend.out.log
-tail -f /var/log/supervisor/backend.err.log
-```
-
-## Testing
-
-### Test Webhook Verification
-```bash
-curl "http://localhost:8001/api/webhook?hub.mode=subscribe&hub.verify_token=verify_token_8f9a2b3c4d5e6f7g8h9i0j1k2l3m4n5o&hub.challenge=test_challenge"
-```
-
-Expected output: `test_challenge`
-
-### Test Incoming Message
-```bash
-curl -X POST http://localhost:8001/api/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "object": "whatsapp_business_account",
-    "entry": [{
-      "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
-      "changes": [{
-        "value": {
-          "messaging_product": "whatsapp",
-          "metadata": {
-            "display_phone_number": "15551234567",
-            "phone_number_id": "PHONE_NUMBER_ID"
-          },
-          "messages": [{
-            "from": "919876543210",
-            "id": "wamid.test123",
-            "timestamp": "1234567890",
-            "text": {
-              "body": "Test reminder message"
-            },
-            "type": "text"
-          }]
-        },
-        "field": "messages"
-      }]
-    }]
-  }'
-```
-
-Expected output: `{"status":"received"}`
-
-Check logs to see the parsed message:
-```bash
-tail -n 30 /var/log/supervisor/backend.out.log
-```
-
-## Database Management
-
-### Connect to PostgreSQL
-```bash
-sudo -u postgres psql -d whatsapp_bot_db
-```
-
-### View Tables
-```sql
-\dt
-```
-
-### View Table Schema
-```sql
-\d users
-\d reminders
-\d subscriptions
-```
-
-### Query Examples
-```sql
--- View all users
-SELECT * FROM users;
-
--- View all reminders
-SELECT * FROM reminders;
-
--- View active subscriptions
-SELECT * FROM subscriptions WHERE status = 'active';
-```
-
-## Current Implementation Status
-
-✅ **Completed:**
-- PostgreSQL database setup
-- Database schema and indexes with `last_sent_at` column
-- Express server with CORS
-- Webhook verification endpoint (GET)
-- Webhook receiver endpoint (POST)
-- **Natural language reminder parsing with OpenAI GPT-4o-mini**
-- **Automatic user creation (plan_type="free")**
-- **Reminder extraction (text, date/time, repeat type)**
-- **IST timezone handling (Asia/Kolkata)**
-- **WhatsApp message sending (confirmations & errors)**
-- **Cron job scheduler (runs every minute)**
-- **Recurring reminders (daily/weekly/monthly)**
-- **Non-recurring reminders (marked as done after sending)**
-- **Next occurrence calculation for recurring reminders**
-- **User commands: DONE, SNOOZE, RESCHEDULE**
-- **Test endpoints for development**
-- Message parsing and logging
-- Environment variable configuration
-- Supervisor service management
-
-⏳ **Not Yet Implemented:**
-- Subscription plan enforcement (free vs paid limits)
-- Reminder list/delete commands
-- Retry logic for failed WhatsApp sends
-- Analytics dashboard
-
-## Next Steps
-
-To implement the reminder functionality, you'll need to add:
-
-1. **Message Processing**: Parse user commands (e.g., "remind me to X at Y")
-2. **User Management**: Register new users automatically
-3. **Reminder Creation**: Store reminders in the database
-4. **Reminder Scheduler**: Background job to check and send reminders
-5. **WhatsApp Messaging**: Function to send messages back to users
-6. **Command Handlers**: Handle different user commands
-
-## Notes
-
-- The server runs on port `8001` and binds to `0.0.0.0`
-- All API routes must have `/api` prefix for proper Kubernetes ingress routing
-- Frontend is disabled as per requirements
-- MongoDB is disabled (replaced by PostgreSQL)
-- Environment variables are loaded via the `start.sh` script
-
-## Support
-
-For issues or questions, check:
-- Backend logs: `/var/log/supervisor/backend.out.log` and `/var/log/supervisor/backend.err.log`
-- PostgreSQL logs: `/var/log/postgresql.err.log`
-- Supervisor status: `sudo supervisorctl status`
+**Built with ❤️ for productivity**
