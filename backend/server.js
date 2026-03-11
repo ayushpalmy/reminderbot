@@ -7,6 +7,7 @@ const { initDatabase } = require('./config/db');
 const { initializeScheduler } = require('./services/reminderScheduler');
 const webhookRoutes = require('./routes/webhook');
 const testRoutes = require('./routes/test');
+const razorpayWebhookRoutes = require('./routes/razorpayWebhook');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -20,14 +21,18 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-// Logging middleware
+// Logging middleware (before raw body routes)
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
+
+// Special handling for Razorpay webhook (needs raw body) - BEFORE bodyParser
+app.use('/api/razorpay', razorpayWebhookRoutes);
+
+// Body parsers (after Razorpay webhook route)
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/webhook', webhookRoutes);

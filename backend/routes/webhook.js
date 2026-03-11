@@ -5,6 +5,7 @@ const { createReminder, getActiveReminderCount } = require('../services/reminder
 const { parseReminderMessage } = require('../services/reminderParser');
 const { sendReminderConfirmation, sendParseErrorMessage, sendWhatsAppMessage } = require('../services/whatsappService');
 const { markReminderDone, snoozeReminder } = require('../services/reminderScheduler');
+const { createPaymentLink } = require('../services/razorpayService');
 const { 
   setUserState, 
   getUserState, 
@@ -165,6 +166,28 @@ router.post('/', async (req, res) => {
             } catch (error) {
               console.error('[PROCESSING ERROR]:', error);
               await sendWhatsAppMessage(from, "Sorry, there was an error fetching your reminders.");
+            }
+            
+          } else if (messageUpper === 'UPGRADE') {
+            console.log('[PROCESSING] Detected command: UPGRADE');
+            
+            try {
+              // Check if user is already on a paid plan
+              if (user.plan_type !== 'free') {
+                await sendWhatsAppMessage(from, `You're already on the ${user.plan_type} plan! 🎉`);
+                console.log(`[PROCESSING] User already on ${user.plan_type} plan`);
+              } else {
+                // Generate Razorpay payment link
+                console.log('[PROCESSING] Creating Razorpay payment link...');
+                const paymentLink = await createPaymentLink(from, user.id);
+                
+                const message = `💳 Upgrade to Personal Plan\n\n✨ Unlimited reminders\n💰 ₹49/month\n\nPay here: ${paymentLink.short_url}`;
+                await sendWhatsAppMessage(from, message);
+                console.log(`[PROCESSING] ✓ Payment link sent to user`);
+              }
+            } catch (error) {
+              console.error('[PROCESSING ERROR]:', error);
+              await sendWhatsAppMessage(from, "Sorry, there was an error generating the payment link. Please try again later.");
             }
             
           } else if (messageUpper.startsWith('DELETE ')) {
