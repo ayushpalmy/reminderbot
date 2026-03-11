@@ -5,6 +5,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const { initDatabase } = require('./config/db');
 const webhookRoutes = require('./routes/webhook');
+const testRoutes = require('./routes/test');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -29,6 +30,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/test', testRoutes);
 
 // Root endpoint
 app.get('/api', (req, res) => {

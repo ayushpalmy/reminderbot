@@ -7,6 +7,11 @@ A Node.js/Express backend for a WhatsApp reminder bot using Meta's WhatsApp Clou
 - ✅ WhatsApp Cloud API integration
 - ✅ Webhook verification endpoint (GET)
 - ✅ Webhook receiver for incoming messages (POST)
+- ✅ **Natural language reminder parsing with OpenAI GPT-4o-mini**
+- ✅ **Automatic user creation and management**
+- ✅ **Reminder storage with repeat types (once/daily/weekly/monthly)**
+- ✅ **WhatsApp message sending for confirmations**
+- ✅ **IST timezone support (Asia/Kolkata)**
 - ✅ PostgreSQL database with proper schema
 - ✅ User management
 - ✅ Reminder storage
@@ -27,7 +32,13 @@ backend/
 ├── config/
 │   └── db.js             # PostgreSQL connection and initialization
 ├── routes/
-│   └── webhook.js        # WhatsApp webhook endpoints
+│   ├── webhook.js        # WhatsApp webhook endpoints (main logic)
+│   └── test.js           # Test endpoints for development
+├── services/
+│   ├── reminderParser.js # OpenAI integration for parsing
+│   ├── userService.js    # User management (CRUD)
+│   ├── reminderService.js # Reminder management (CRUD)
+│   └── whatsappService.js # WhatsApp message sending
 ├── start.sh              # Startup script with env loading
 ├── package.json          # Node.js dependencies
 └── .env                  # Environment variables
@@ -153,6 +164,12 @@ WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id_here
 
 # Webhook Verification Token
 WHATSAPP_VERIFY_TOKEN=verify_token_8f9a2b3c4d5e6f7g8h9i0j1k2l3m4n5o
+
+# OpenAI API Key (Get from https://platform.openai.com/api-keys)
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Timezone for reminders
+TIMEZONE=Asia/Kolkata
 
 # CORS Settings
 CORS_ORIGINS=*
@@ -305,16 +322,20 @@ SELECT * FROM subscriptions WHERE status = 'active';
 - Express server with CORS
 - Webhook verification endpoint (GET)
 - Webhook receiver endpoint (POST)
+- **Natural language reminder parsing with OpenAI GPT-4o-mini**
+- **Automatic user creation (plan_type="free")**
+- **Reminder extraction (text, date/time, repeat type)**
+- **IST timezone handling (Asia/Kolkata)**
+- **WhatsApp message sending (confirmations & errors)**
+- **Test endpoints for development**
 - Message parsing and logging
 - Environment variable configuration
 - Supervisor service management
 
-⏳ **Not Yet Implemented (As per requirements):**
-- Reminder scheduling logic
-- Message processing logic
-- WhatsApp message sending
-- User registration flow
-- Subscription management
+⏳ **Not Yet Implemented:**
+- Reminder scheduling/trigger system (background job to send reminders at scheduled time)
+- Subscription plan enforcement
+- Reminder management commands (list, delete, mark done)
 
 ## Next Steps
 

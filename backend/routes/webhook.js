@@ -1,5 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { getOrCreateUser } = require('../services/userService');
+const { createReminder } = require('../services/reminderService');
+const { parseReminderMessage } = require('../services/reminderParser');
+const { sendReminderConfirmation, sendParseErrorMessage } = require('../services/whatsappService');
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
@@ -39,8 +43,6 @@ router.get('/', (req, res) => {
  */
 router.post('/', async (req, res) => {
   console.log('\n[WEBHOOK MESSAGE] Received POST request');
-  console.log('Headers:', JSON.stringify(req.headers, null, 2));
-  console.log('Body:', JSON.stringify(req.body, null, 2));
   
   try {
     const body = req.body;
@@ -68,8 +70,60 @@ router.post('/', async (req, res) => {
         console.log('Message:', messageBody);
         console.log('========================================\n');
         
-        // TODO: Process the message (will be implemented later)
-        // For now, just log it
+        // Process only text messages
+        if (messageType === 'text' && messageBody) {
+          // Parse the reminder message using OpenAI
+          console.log('[PROCESSING] Parsing reminder with OpenAI...');
+          
+          try {
+            const parsedReminder = await parseReminderMessage(messageBody);
+            
+            if (parsedReminder) {
+              console.log('[PROCESSING] ✓ Successfully parsed reminder');
+              console.log('[PROCESSING] Reminder text:', parsedReminder.reminder_text);
+              console.log('[PROCESSING] Remind at:', parsedReminder.remind_at);
+              console.log('[PROCESSING] Repeat type:', parsedReminder.repeat_type);
+              
+              // Get or create user
+              console.log('[PROCESSING] Getting/creating user...');
+              const user = await getOrCreateUser(from);
+              console.log('[PROCESSING] ✓ User ID:', user.id);
+              
+              // Create reminder in database
+              console.log('[PROCESSING] Creating reminder in database...');
+              const reminder = await createReminder(
+                user.id,
+                parsedReminder.reminder_text,
+                parsedReminder.remind_at,
+                parsedReminder.repeat_type
+              );
+              console.log('[PROCESSING] ✓ Reminder created with ID:', reminder.id);
+              
+              // Send confirmation to user
+              console.log('[PROCESSING] Sending confirmation to user...');
+              await sendReminderConfirmation(
+                from,
+                parsedReminder.reminder_text,
+                parsedReminder.formatted_date,
+                parsedReminder.formatted_time,
+                parsedReminder.repeat_type
+              );
+              console.log('[PROCESSING] ✓ Confirmation sent\n');
+              
+            } else {
+              // Not a reminder or couldn't parse
+              console.log('[PROCESSING] ✗ Message is not a reminder request');
+              await sendParseErrorMessage(from);
+            }
+            
+          } catch (error) {
+            console.error('[PROCESSING ERROR]:', error);
+            // Send error message to user
+            await sendParseErrorMessage(from);
+          }
+        } else {
+          console.log('[PROCESSING] Skipping non-text message');
+        }
         
       } else {
         console.log('[WEBHOOK] Received notification but no messages found');
