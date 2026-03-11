@@ -4,6 +4,7 @@ const path = require('path');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const { initDatabase } = require('./config/db');
+const { initializeScheduler } = require('./services/reminderScheduler');
 const webhookRoutes = require('./routes/webhook');
 const testRoutes = require('./routes/test');
 
@@ -69,6 +70,9 @@ initDatabase()
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`Database: Connected`);
       console.log(`========================================\n`);
+      
+      // Initialize reminder scheduler after server starts
+      initializeScheduler();
     });
   })
   .catch((err) => {

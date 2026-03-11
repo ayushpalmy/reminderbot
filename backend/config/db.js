@@ -47,6 +47,7 @@ const initDatabase = async () => {
         remind_at TIMESTAMP NOT NULL,
         repeat_type VARCHAR(20) DEFAULT 'once',
         is_done BOOLEAN DEFAULT false,
+        last_sent_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);

@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { getOrCreateUser } = require('../services/userService');
-const { createReminder } = require('../services/reminderService');
+const { createReminder, getUserReminders } = require('../services/reminderService');
 const { parseReminderMessage } = require('../services/reminderParser');
-const { sendReminderConfirmation, sendParseErrorMessage } = require('../services/whatsappService');
+const { sendReminderConfirmation, sendParseErrorMessage, sendWhatsAppMessage } = require('../services/whatsappService');
+const { markReminderDone, snoozeReminder } = require('../services/reminderScheduler');
+const moment = require('moment-timezone');
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
@@ -72,54 +74,99 @@ router.post('/', async (req, res) => {
         
         // Process only text messages
         if (messageType === 'text' && messageBody) {
-          // Parse the reminder message using OpenAI
-          console.log('[PROCESSING] Parsing reminder with OpenAI...');
+          const messageUpper = messageBody.trim().toUpperCase();
           
-          try {
-            const parsedReminder = await parseReminderMessage(messageBody);
+          // Check for command responses (DONE, SNOOZE, RESCHEDULE)
+          if (messageUpper === 'DONE' || messageUpper === 'SNOOZE' || messageUpper === 'RESCHEDULE') {
+            console.log(`[PROCESSING] Detected command: ${messageUpper}`);
             
-            if (parsedReminder) {
-              console.log('[PROCESSING] ✓ Successfully parsed reminder');
-              console.log('[PROCESSING] Reminder text:', parsedReminder.reminder_text);
-              console.log('[PROCESSING] Remind at:', parsedReminder.remind_at);
-              console.log('[PROCESSING] Repeat type:', parsedReminder.repeat_type);
-              
-              // Get or create user
-              console.log('[PROCESSING] Getting/creating user...');
+            try {
+              // Get or create user first
               const user = await getOrCreateUser(from);
-              console.log('[PROCESSING] ✓ User ID:', user.id);
               
-              // Create reminder in database
-              console.log('[PROCESSING] Creating reminder in database...');
-              const reminder = await createReminder(
-                user.id,
-                parsedReminder.reminder_text,
-                parsedReminder.remind_at,
-                parsedReminder.repeat_type
-              );
-              console.log('[PROCESSING] ✓ Reminder created with ID:', reminder.id);
+              // Get user's most recent active reminder
+              const reminders = await getUserReminders(user.id);
+              const activeReminder = reminders.find(r => !r.is_done);
               
-              // Send confirmation to user
-              console.log('[PROCESSING] Sending confirmation to user...');
-              await sendReminderConfirmation(
-                from,
-                parsedReminder.reminder_text,
-                parsedReminder.formatted_date,
-                parsedReminder.formatted_time,
-                parsedReminder.repeat_type
-              );
-              console.log('[PROCESSING] ✓ Confirmation sent\n');
+              if (!activeReminder) {
+                await sendWhatsAppMessage(from, "You don't have any active reminders.");
+                console.log('[PROCESSING] No active reminders found for user');
+              } else {
+                if (messageUpper === 'DONE') {
+                  await markReminderDone(activeReminder.id);
+                  await sendWhatsAppMessage(from, `✅ Reminder marked as complete: "${activeReminder.reminder_text}"`);
+                  console.log(`[PROCESSING] ✓ Marked reminder ${activeReminder.id} as done`);
+                  
+                } else if (messageUpper === 'SNOOZE') {
+                  const snoozed = await snoozeReminder(activeReminder.id);
+                  const snoozeTime = moment.tz(snoozed.remind_at, 'Asia/Kolkata').format('h:mm A');
+                  await sendWhatsAppMessage(from, `⏰ Reminder snoozed until ${snoozeTime}`);
+                  console.log(`[PROCESSING] ✓ Snoozed reminder ${activeReminder.id} by 2 hours`);
+                  
+                } else if (messageUpper === 'RESCHEDULE') {
+                  await sendWhatsAppMessage(
+                    from, 
+                    `To reschedule, send a new reminder message like:\n"remind me to ${activeReminder.reminder_text} tomorrow at 3pm"`
+                  );
+                  console.log(`[PROCESSING] Sent reschedule instructions`);
+                }
+              }
               
-            } else {
-              // Not a reminder or couldn't parse
-              console.log('[PROCESSING] ✗ Message is not a reminder request');
-              await sendParseErrorMessage(from);
+            } catch (error) {
+              console.error('[PROCESSING ERROR]:', error);
+              await sendWhatsAppMessage(from, "Sorry, there was an error processing your request.");
             }
             
-          } catch (error) {
-            console.error('[PROCESSING ERROR]:', error);
-            // Send error message to user
-            await sendParseErrorMessage(from);
+          } else {
+            // Not a command - parse as new reminder
+            console.log('[PROCESSING] Parsing reminder with OpenAI...');
+            
+            try {
+              const parsedReminder = await parseReminderMessage(messageBody);
+              
+              if (parsedReminder) {
+                console.log('[PROCESSING] ✓ Successfully parsed reminder');
+                console.log('[PROCESSING] Reminder text:', parsedReminder.reminder_text);
+                console.log('[PROCESSING] Remind at:', parsedReminder.remind_at);
+                console.log('[PROCESSING] Repeat type:', parsedReminder.repeat_type);
+                
+                // Get or create user
+                console.log('[PROCESSING] Getting/creating user...');
+                const user = await getOrCreateUser(from);
+                console.log('[PROCESSING] ✓ User ID:', user.id);
+                
+                // Create reminder in database
+                console.log('[PROCESSING] Creating reminder in database...');
+                const reminder = await createReminder(
+                  user.id,
+                  parsedReminder.reminder_text,
+                  parsedReminder.remind_at,
+                  parsedReminder.repeat_type
+                );
+                console.log('[PROCESSING] ✓ Reminder created with ID:', reminder.id);
+                
+                // Send confirmation to user
+                console.log('[PROCESSING] Sending confirmation to user...');
+                await sendReminderConfirmation(
+                  from,
+                  parsedReminder.reminder_text,
+                  parsedReminder.formatted_date,
+                  parsedReminder.formatted_time,
+                  parsedReminder.repeat_type
+                );
+                console.log('[PROCESSING] ✓ Confirmation sent\n');
+                
+              } else {
+                // Not a reminder or couldn't parse
+                console.log('[PROCESSING] ✗ Message is not a reminder request');
+                await sendParseErrorMessage(from);
+              }
+              
+            } catch (error) {
+              console.error('[PROCESSING ERROR]:', error);
+              // Send error message to user
+              await sendParseErrorMessage(from);
+            }
           }
         } else {
           console.log('[PROCESSING] Skipping non-text message');

@@ -318,7 +318,7 @@ SELECT * FROM subscriptions WHERE status = 'active';
 
 ✅ **Completed:**
 - PostgreSQL database setup
-- Database schema and indexes
+- Database schema and indexes with `last_sent_at` column
 - Express server with CORS
 - Webhook verification endpoint (GET)
 - Webhook receiver endpoint (POST)
@@ -327,15 +327,21 @@ SELECT * FROM subscriptions WHERE status = 'active';
 - **Reminder extraction (text, date/time, repeat type)**
 - **IST timezone handling (Asia/Kolkata)**
 - **WhatsApp message sending (confirmations & errors)**
+- **Cron job scheduler (runs every minute)**
+- **Recurring reminders (daily/weekly/monthly)**
+- **Non-recurring reminders (marked as done after sending)**
+- **Next occurrence calculation for recurring reminders**
+- **User commands: DONE, SNOOZE, RESCHEDULE**
 - **Test endpoints for development**
 - Message parsing and logging
 - Environment variable configuration
 - Supervisor service management
 
 ⏳ **Not Yet Implemented:**
-- Reminder scheduling/trigger system (background job to send reminders at scheduled time)
-- Subscription plan enforcement
-- Reminder management commands (list, delete, mark done)
+- Subscription plan enforcement (free vs paid limits)
+- Reminder list/delete commands
+- Retry logic for failed WhatsApp sends
+- Analytics dashboard
 
 ## Next Steps
 
