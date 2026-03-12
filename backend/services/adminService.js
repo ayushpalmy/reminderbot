@@ -10,28 +10,46 @@ async function getDashboardStats() {
     const db = getDb();
     
     // Total users
-    const totalUsers = await db.collection('users').countDocuments();
+    const totalUsersResult = await db.query('SELECT COUNT(*) as count FROM users');
+    const totalUsers = parseInt(totalUsersResult.rows[0].count);
     
     // Free plan users
-    const freePlanUsers = await db.collection('users').countDocuments({ plan_type: 'free' });
+    const freePlanResult = await db.query(
+      "SELECT COUNT(*) as count FROM users WHERE plan_type = 'free'"
+    );
+    const freePlanUsers = parseInt(freePlanResult.rows[0].count);
     
     // Paid plan users
-    const paidPlanUsers = await db.collection('users').countDocuments({ plan_type: { $ne: 'free' } });
+    const paidPlanResult = await db.query(
+      "SELECT COUNT(*) as count FROM users WHERE plan_type != 'free'"
+    );
+    const paidPlanUsers = parseInt(paidPlanResult.rows[0].count);
     
     // WhatsApp users
-    const whatsappUsers = await db.collection('users').countDocuments({ phone_number: { $ne: null } });
+    const whatsappResult = await db.query(
+      'SELECT COUNT(*) as count FROM users WHERE phone_number IS NOT NULL'
+    );
+    const whatsappUsers = parseInt(whatsappResult.rows[0].count);
     
     // Telegram users
-    const telegramUsers = await db.collection('users').countDocuments({ telegram_chat_id: { $ne: null } });
+    const telegramResult = await db.query(
+      'SELECT COUNT(*) as count FROM users WHERE telegram_chat_id IS NOT NULL'
+    );
+    const telegramUsers = parseInt(telegramResult.rows[0].count);
     
     // Total active reminders
-    const activeReminders = await db.collection('reminders').countDocuments({ is_done: false });
+    const activeRemindersResult = await db.query(
+      'SELECT COUNT(*) as count FROM reminders WHERE is_done = false'
+    );
+    const activeReminders = parseInt(activeRemindersResult.rows[0].count);
     
     // Reminders sent today
-    const todayStart = moment().startOf('day').toDate();
-    const remindersSentToday = await db.collection('reminders').countDocuments({
-      last_sent_at: { $gte: todayStart }
-    });
+    const todayStart = moment().startOf('day').format('YYYY-MM-DD HH:mm:ss');
+    const remindersSentTodayResult = await db.query(
+      'SELECT COUNT(*) as count FROM reminders WHERE last_sent_at >= $1',
+      [todayStart]
+    );
+    const remindersSentToday = parseInt(remindersSentTodayResult.rows[0].count);
     
     return {
       totalUsers,
@@ -56,20 +74,15 @@ async function getDashboardStats() {
 async function getRecentUsers(limit = 10) {
   try {
     const db = getDb();
-    const users = await db.collection('users')
-      .find({})
-      .project({ phone_number: 1, telegram_chat_id: 1, plan_type: 1, created_at: 1 })
-      .sort({ created_at: -1 })
-      .limit(limit)
-      .toArray();
+    const result = await db.query(
+      `SELECT id, phone_number, telegram_chat_id, plan_type, created_at 
+       FROM users 
+       ORDER BY created_at DESC 
+       LIMIT $1`,
+      [limit]
+    );
     
-    return users.map(user => ({
-      id: user._id.toString(),
-      phone_number: user.phone_number,
-      telegram_chat_id: user.telegram_chat_id,
-      plan_type: user.plan_type,
-      created_at: user.created_at
-    }));
+    return result.rows;
   } catch (error) {
     console.error('[ADMIN] Error getting recent users:', error);
     throw error;

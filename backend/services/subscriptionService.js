@@ -1,4 +1,4 @@
-const { getDb, ObjectId } = require('../config/db');
+const { getDb } = require('../config/db');
 const moment = require('moment-timezone');
 
 /**
@@ -10,15 +10,13 @@ const moment = require('moment-timezone');
 async function updateUserPlan(userId, planType) {
   try {
     const db = getDb();
-    await db.collection('users').updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: { plan_type: planType } }
+    const result = await db.query(
+      'UPDATE users SET plan_type = $1 WHERE id = $2 RETURNING *',
+      [planType, userId]
     );
     
-    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
     console.log(`[SUBSCRIPTION] ✓ Updated user ${userId} to plan: ${planType}`);
-    
-    return user ? { ...user, id: user._id.toString() } : null;
+    return result.rows[0] || null;
   } catch (error) {
     console.error('[SUBSCRIPTION] Error updating user plan:', error);
     throw error;
@@ -40,42 +38,32 @@ async function createSubscription(userId, plan, status, paymentId = null) {
     const expiresAt = moment().add(30, 'days').toDate();
     
     // Check if subscription exists
-    const existing = await db.collection('subscriptions')
-      .findOne({ user_id: userId }, { sort: { started_at: -1 } });
+    const existingResult = await db.query(
+      'SELECT * FROM subscriptions WHERE user_id = $1 ORDER BY started_at DESC LIMIT 1',
+      [userId]
+    );
     
-    if (existing) {
+    if (existingResult.rows.length > 0) {
       // Update existing subscription
-      await db.collection('subscriptions').updateOne(
-        { _id: existing._id },
-        {
-          $set: {
-            plan: plan,
-            status: status,
-            started_at: startedAt,
-            expires_at: expiresAt,
-            payment_id: paymentId
-          }
-        }
+      const result = await db.query(
+        `UPDATE subscriptions 
+         SET plan = $1, status = $2, started_at = $3, expires_at = $4, payment_id = $5
+         WHERE id = $6
+         RETURNING *`,
+        [plan, status, startedAt, expiresAt, paymentId, existingResult.rows[0].id]
       );
       console.log(`[SUBSCRIPTION] ✓ Updated subscription for user ${userId}`);
-      
-      const updated = await db.collection('subscriptions').findOne({ _id: existing._id });
-      return { ...updated, id: updated._id.toString() };
+      return result.rows[0];
     } else {
       // Create new subscription
-      const subscription = {
-        user_id: userId,
-        plan: plan,
-        status: status,
-        started_at: startedAt,
-        expires_at: expiresAt,
-        payment_id: paymentId
-      };
-      
-      const result = await db.collection('subscriptions').insertOne(subscription);
+      const result = await db.query(
+        `INSERT INTO subscriptions (user_id, plan, status, started_at, expires_at, payment_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [userId, plan, status, startedAt, expiresAt, paymentId]
+      );
       console.log(`[SUBSCRIPTION] ✓ Created subscription for user ${userId}`);
-      
-      return { ...subscription, id: result.insertedId.toString() };
+      return result.rows[0];
     }
   } catch (error) {
     console.error('[SUBSCRIPTION] Error creating/updating subscription:', error);
@@ -91,13 +79,14 @@ async function createSubscription(userId, plan, status, paymentId = null) {
 async function getActiveSubscription(userId) {
   try {
     const db = getDb();
-    const subscription = await db.collection('subscriptions')
-      .findOne(
-        { user_id: userId, status: 'active' },
-        { sort: { started_at: -1 } }
-      );
-    
-    return subscription ? { ...subscription, id: subscription._id.toString() } : null;
+    const result = await db.query(
+      `SELECT * FROM subscriptions 
+       WHERE user_id = $1 AND status = 'active' 
+       ORDER BY started_at DESC 
+       LIMIT 1`,
+      [userId]
+    );
+    return result.rows[0] || null;
   } catch (error) {
     console.error('[SUBSCRIPTION] Error getting active subscription:', error);
     throw error;

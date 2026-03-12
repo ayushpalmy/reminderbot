@@ -1,46 +1,77 @@
-const { MongoClient, ObjectId } = require('mongodb');
+const { Pool } = require('pg');
+const { v4: uuidv4 } = require('uuid');
 
-// MongoDB connection URL
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017';
-const DB_NAME = process.env.DB_NAME || 'reminder_bot';
-
-let db = null;
-let client = null;
+// PostgreSQL connection pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
 
 /**
- * Initialize MongoDB connection
+ * Initialize PostgreSQL database and create tables
  */
 async function initDatabase() {
   try {
-    console.log('Connecting to MongoDB...');
+    console.log('Connecting to PostgreSQL...');
     
-    client = new MongoClient(MONGO_URL);
-    await client.connect();
+    // Test connection
+    const client = await pool.connect();
+    console.log('✓ PostgreSQL connection established');
     
-    db = client.db(DB_NAME);
+    // Create users table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        phone_number VARCHAR(50) UNIQUE,
+        telegram_chat_id VARCHAR(100) UNIQUE,
+        plan_type VARCHAR(20) DEFAULT 'free',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✓ Users table ready');
+    
+    // Create reminders table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reminders (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reminder_text TEXT NOT NULL,
+        remind_at TIMESTAMP NOT NULL,
+        repeat_type VARCHAR(20) DEFAULT 'once',
+        is_done BOOLEAN DEFAULT false,
+        last_sent_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✓ Reminders table ready');
+    
+    // Create subscriptions table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plan VARCHAR(20) NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        started_at TIMESTAMP NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        payment_id VARCHAR(100)
+      )
+    `);
+    console.log('✓ Subscriptions table ready');
     
     // Create indexes for better performance
-    console.log('Creating indexes...');
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_reminders_user_id ON reminders(user_id);
+      CREATE INDEX IF NOT EXISTS idx_reminders_remind_at ON reminders(remind_at);
+      CREATE INDEX IF NOT EXISTS idx_reminders_is_done_remind_at ON reminders(is_done, remind_at);
+      CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
+    `);
+    console.log('✓ Indexes created');
     
-    // Users collection indexes
-    await db.collection('users').createIndex({ phone_number: 1 }, { unique: true, sparse: true });
-    await db.collection('users').createIndex({ telegram_chat_id: 1 }, { unique: true, sparse: true });
-    console.log('✓ Users indexes created');
+    client.release();
+    console.log('Database initialization complete\n');
     
-    // Reminders collection indexes
-    await db.collection('reminders').createIndex({ user_id: 1 });
-    await db.collection('reminders').createIndex({ remind_at: 1 });
-    await db.collection('reminders').createIndex({ is_done: 1, remind_at: 1 });
-    console.log('✓ Reminders indexes created');
-    
-    // Subscriptions collection indexes
-    await db.collection('subscriptions').createIndex({ user_id: 1 });
-    console.log('✓ Subscriptions indexes created');
-    
-    console.log('Database connection established');
-    console.log(`Database: ${DB_NAME}\n`);
-    
-    return db;
+    return pool;
   } catch (error) {
     console.error('Database initialization error:', error);
     throw error;
@@ -48,28 +79,30 @@ async function initDatabase() {
 }
 
 /**
- * Get the database instance
+ * Get the database pool
  */
 function getDb() {
-  if (!db) {
-    throw new Error('Database not initialized. Call initDatabase() first.');
-  }
-  return db;
+  return pool;
 }
 
 /**
  * Close database connection
  */
 async function closeDatabase() {
-  if (client) {
-    await client.close();
-    console.log('Database connection closed');
-  }
+  await pool.end();
+  console.log('Database connection closed');
+}
+
+/**
+ * Generate a new UUID
+ */
+function generateUUID() {
+  return uuidv4();
 }
 
 module.exports = {
   initDatabase,
   getDb,
   closeDatabase,
-  ObjectId
+  generateUUID
 };

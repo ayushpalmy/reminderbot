@@ -1,4 +1,4 @@
-const { getDb, ObjectId } = require('../config/db');
+const { getDb } = require('../config/db');
 const moment = require('moment-timezone');
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
@@ -54,13 +54,15 @@ function clearUserState(identifier) {
 async function getMostRecentReminder(userId) {
   try {
     const db = getDb();
-    const reminder = await db.collection('reminders')
-      .findOne(
-        { user_id: userId, is_done: false },
-        { sort: { last_sent_at: -1, created_at: -1 } }
-      );
+    const result = await db.query(
+      `SELECT * FROM reminders 
+       WHERE user_id = $1 AND is_done = false 
+       ORDER BY last_sent_at DESC NULLS LAST, created_at DESC 
+       LIMIT 1`,
+      [userId]
+    );
     
-    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error getting most recent reminder:', error);
     throw error;
@@ -75,19 +77,21 @@ async function getMostRecentReminder(userId) {
 async function getActiveRemindersFormatted(userId) {
   try {
     const db = getDb();
-    const reminders = await db.collection('reminders')
-      .find({ user_id: userId, is_done: false })
-      .sort({ remind_at: 1 })
-      .toArray();
+    const result = await db.query(
+      `SELECT * FROM reminders 
+       WHERE user_id = $1 AND is_done = false 
+       ORDER BY remind_at ASC`,
+      [userId]
+    );
     
-    return reminders.map((reminder, index) => {
+    return result.rows.map((reminder, index) => {
       const remindTime = moment.tz(reminder.remind_at, TIMEZONE);
       const formatted = remindTime.format('Do MMM, h:mm A');
       const repeatInfo = reminder.repeat_type !== 'once' ? ` (${reminder.repeat_type})` : '';
       
       return {
         number: index + 1,
-        id: reminder._id.toString(),
+        id: reminder.id,
         text: reminder.reminder_text,
         time: formatted,
         repeat: repeatInfo,
@@ -109,12 +113,12 @@ async function getActiveRemindersFormatted(userId) {
 async function deleteReminder(reminderId, userId) {
   try {
     const db = getDb();
-    const result = await db.collection('reminders').deleteOne({
-      _id: new ObjectId(reminderId),
-      user_id: userId
-    });
+    const result = await db.query(
+      'DELETE FROM reminders WHERE id = $1 AND user_id = $2',
+      [reminderId, userId]
+    );
     
-    return result.deletedCount > 0;
+    return result.rowCount > 0;
   } catch (error) {
     console.error('Error deleting reminder:', error);
     throw error;
@@ -130,13 +134,12 @@ async function deleteReminder(reminderId, userId) {
 async function updateReminderTime(reminderId, newRemindAt) {
   try {
     const db = getDb();
-    await db.collection('reminders').updateOne(
-      { _id: new ObjectId(reminderId) },
-      { $set: { remind_at: new Date(newRemindAt) } }
+    const result = await db.query(
+      'UPDATE reminders SET remind_at = $1 WHERE id = $2 RETURNING *',
+      [newRemindAt, reminderId]
     );
     
-    const reminder = await db.collection('reminders').findOne({ _id: new ObjectId(reminderId) });
-    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error updating reminder time:', error);
     throw error;

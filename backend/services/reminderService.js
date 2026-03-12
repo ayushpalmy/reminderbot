@@ -1,4 +1,4 @@
-const { getDb, ObjectId } = require('../config/db');
+const { getDb } = require('../config/db');
 
 /**
  * Get count of active reminders for a user
@@ -8,11 +8,11 @@ const { getDb, ObjectId } = require('../config/db');
 async function getActiveReminderCount(userId) {
   try {
     const db = getDb();
-    const count = await db.collection('reminders').countDocuments({
-      user_id: userId,
-      is_done: false
-    });
-    return count;
+    const result = await db.query(
+      'SELECT COUNT(*) as count FROM reminders WHERE user_id = $1 AND is_done = false',
+      [userId]
+    );
+    return parseInt(result.rows[0].count);
   } catch (error) {
     console.error('Error getting active reminder count:', error);
     throw error;
@@ -30,23 +30,15 @@ async function getActiveReminderCount(userId) {
 async function createReminder(userId, reminderText, remindAt, repeatType = 'once') {
   try {
     const db = getDb();
-    const reminder = {
-      user_id: userId,
-      reminder_text: reminderText,
-      remind_at: new Date(remindAt),
-      repeat_type: repeatType,
-      is_done: false,
-      last_sent_at: null,
-      created_at: new Date()
-    };
+    const result = await db.query(
+      `INSERT INTO reminders (user_id, reminder_text, remind_at, repeat_type) 
+       VALUES ($1, $2, $3, $4) 
+       RETURNING *`,
+      [userId, reminderText, remindAt, repeatType]
+    );
     
-    const result = await db.collection('reminders').insertOne(reminder);
     console.log(`✓ Created reminder for user_id ${userId}: ${reminderText}`);
-    
-    return {
-      ...reminder,
-      id: result.insertedId.toString()
-    };
+    return result.rows[0];
   } catch (error) {
     console.error('Error creating reminder:', error);
     throw error;
@@ -61,12 +53,11 @@ async function createReminder(userId, reminderText, remindAt, repeatType = 'once
 async function getUserReminders(userId) {
   try {
     const db = getDb();
-    const reminders = await db.collection('reminders')
-      .find({ user_id: userId })
-      .sort({ remind_at: 1 })
-      .toArray();
-    
-    return reminders.map(r => ({ ...r, id: r._id.toString() }));
+    const result = await db.query(
+      'SELECT * FROM reminders WHERE user_id = $1 ORDER BY remind_at ASC',
+      [userId]
+    );
+    return result.rows;
   } catch (error) {
     console.error('Error getting user reminders:', error);
     throw error;
@@ -80,49 +71,14 @@ async function getUserReminders(userId) {
 async function getPendingReminders() {
   try {
     const db = getDb();
-    const reminders = await db.collection('reminders').aggregate([
-      {
-        $match: {
-          is_done: false,
-          remind_at: { $lte: new Date() }
-        }
-      },
-      {
-        $addFields: {
-          user_object_id: { $toObjectId: '$user_id' }
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'user_object_id',
-          foreignField: '_id',
-          as: 'user'
-        }
-      },
-      {
-        $unwind: '$user'
-      },
-      {
-        $project: {
-          _id: 1,
-          user_id: 1,
-          reminder_text: 1,
-          remind_at: 1,
-          repeat_type: 1,
-          is_done: 1,
-          last_sent_at: 1,
-          created_at: 1,
-          phone_number: '$user.phone_number',
-          telegram_chat_id: '$user.telegram_chat_id'
-        }
-      },
-      {
-        $sort: { remind_at: 1 }
-      }
-    ]).toArray();
-    
-    return reminders.map(r => ({ ...r, id: r._id.toString() }));
+    const result = await db.query(
+      `SELECT r.*, u.phone_number, u.telegram_chat_id 
+       FROM reminders r
+       INNER JOIN users u ON r.user_id = u.id
+       WHERE r.is_done = false AND r.remind_at <= CURRENT_TIMESTAMP
+       ORDER BY r.remind_at ASC`
+    );
+    return result.rows;
   } catch (error) {
     console.error('Error getting pending reminders:', error);
     throw error;
@@ -137,15 +93,32 @@ async function getPendingReminders() {
 async function markReminderDone(reminderId) {
   try {
     const db = getDb();
-    await db.collection('reminders').updateOne(
-      { _id: new ObjectId(reminderId) },
-      { $set: { is_done: true } }
+    const result = await db.query(
+      'UPDATE reminders SET is_done = true WHERE id = $1 RETURNING *',
+      [reminderId]
     );
-    
-    const reminder = await db.collection('reminders').findOne({ _id: new ObjectId(reminderId) });
-    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error marking reminder as done:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update last_sent_at timestamp for a reminder
+ * @param {string} reminderId 
+ * @returns {Promise<Object>}
+ */
+async function updateLastSentAt(reminderId) {
+  try {
+    const db = getDb();
+    const result = await db.query(
+      'UPDATE reminders SET last_sent_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [reminderId]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error updating last_sent_at:', error);
     throw error;
   }
 }
@@ -158,8 +131,11 @@ async function markReminderDone(reminderId) {
 async function getReminderById(reminderId) {
   try {
     const db = getDb();
-    const reminder = await db.collection('reminders').findOne({ _id: new ObjectId(reminderId) });
-    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
+    const result = await db.query(
+      'SELECT * FROM reminders WHERE id = $1',
+      [reminderId]
+    );
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error getting reminder by ID:', error);
     throw error;
@@ -172,5 +148,6 @@ module.exports = {
   getUserReminders,
   getPendingReminders,
   markReminderDone,
+  updateLastSentAt,
   getReminderById
 };

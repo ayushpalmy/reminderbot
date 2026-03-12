@@ -1,6 +1,6 @@
 const cron = require('node-cron');
 const moment = require('moment-timezone');
-const { getDb, ObjectId } = require('../config/db');
+const { getDb } = require('../config/db');
 const { sendWhatsAppMessage } = require('./whatsappService');
 const { sendTelegramMessage } = require('./telegramService');
 
@@ -13,49 +13,14 @@ const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
 async function getPendingReminders() {
   try {
     const db = getDb();
-    const reminders = await db.collection('reminders').aggregate([
-      {
-        $match: {
-          is_done: false,
-          remind_at: { $lte: new Date() }
-        }
-      },
-      {
-        $addFields: {
-          user_object_id: { $toObjectId: '$user_id' }
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'user_object_id',
-          foreignField: '_id',
-          as: 'user'
-        }
-      },
-      {
-        $unwind: '$user'
-      },
-      {
-        $project: {
-          _id: 1,
-          user_id: 1,
-          reminder_text: 1,
-          remind_at: 1,
-          repeat_type: 1,
-          is_done: 1,
-          last_sent_at: 1,
-          created_at: 1,
-          phone_number: '$user.phone_number',
-          telegram_chat_id: '$user.telegram_chat_id'
-        }
-      },
-      {
-        $sort: { remind_at: 1 }
-      }
-    ]).toArray();
-    
-    return reminders.map(r => ({ ...r, id: r._id.toString() }));
+    const result = await db.query(
+      `SELECT r.*, u.phone_number, u.telegram_chat_id 
+       FROM reminders r
+       INNER JOIN users u ON r.user_id = u.id
+       WHERE r.is_done = false AND r.remind_at <= CURRENT_TIMESTAMP
+       ORDER BY r.remind_at ASC`
+    );
+    return result.rows;
   } catch (error) {
     console.error('[SCHEDULER] Error fetching pending reminders:', error);
     throw error;
@@ -132,9 +97,9 @@ async function updateReminderAfterSending(reminder) {
     
     if (reminder.repeat_type === 'once') {
       // Non-recurring: mark as done
-      await db.collection('reminders').updateOne(
-        { _id: new ObjectId(reminder.id) },
-        { $set: { is_done: true, last_sent_at: now } }
+      await db.query(
+        'UPDATE reminders SET is_done = true, last_sent_at = $1 WHERE id = $2',
+        [now, reminder.id]
       );
       console.log(`[SCHEDULER] ✓ Marked reminder ${reminder.id} as done (non-recurring)`);
     } else {
@@ -142,9 +107,9 @@ async function updateReminderAfterSending(reminder) {
       const nextRemindAt = calculateNextOccurrence(reminder.remind_at, reminder.repeat_type);
       
       if (nextRemindAt) {
-        await db.collection('reminders').updateOne(
-          { _id: new ObjectId(reminder.id) },
-          { $set: { remind_at: nextRemindAt, last_sent_at: now } }
+        await db.query(
+          'UPDATE reminders SET remind_at = $1, last_sent_at = $2 WHERE id = $3',
+          [nextRemindAt, now, reminder.id]
         );
         
         const formattedNext = moment.tz(nextRemindAt, TIMEZONE).format('YYYY-MM-DD HH:mm:ss');
@@ -222,13 +187,11 @@ function initializeScheduler() {
 async function markReminderDone(reminderId) {
   try {
     const db = getDb();
-    await db.collection('reminders').updateOne(
-      { _id: new ObjectId(reminderId) },
-      { $set: { is_done: true } }
+    const result = await db.query(
+      'UPDATE reminders SET is_done = true WHERE id = $1 RETURNING *',
+      [reminderId]
     );
-    
-    const reminder = await db.collection('reminders').findOne({ _id: new ObjectId(reminderId) });
-    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error marking reminder as done:', error);
     throw error;
@@ -244,13 +207,11 @@ async function snoozeReminder(reminderId) {
     const db = getDb();
     const newRemindAt = moment.tz(TIMEZONE).add(2, 'hours').toDate();
     
-    await db.collection('reminders').updateOne(
-      { _id: new ObjectId(reminderId) },
-      { $set: { remind_at: newRemindAt } }
+    const result = await db.query(
+      'UPDATE reminders SET remind_at = $1 WHERE id = $2 RETURNING *',
+      [newRemindAt, reminderId]
     );
-    
-    const reminder = await db.collection('reminders').findOne({ _id: new ObjectId(reminderId) });
-    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error snoozing reminder:', error);
     throw error;

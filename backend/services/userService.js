@@ -1,4 +1,4 @@
-const { getDb, ObjectId } = require('../config/db');
+const { getDb } = require('../config/db');
 
 /**
  * Get user by phone number
@@ -8,8 +8,11 @@ const { getDb, ObjectId } = require('../config/db');
 async function getUserByPhone(phoneNumber) {
   try {
     const db = getDb();
-    const user = await db.collection('users').findOne({ phone_number: phoneNumber });
-    return user ? { ...user, id: user._id.toString() } : null;
+    const result = await db.query(
+      'SELECT * FROM users WHERE phone_number = $1',
+      [phoneNumber]
+    );
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error getting user by phone:', error);
     throw error;
@@ -24,8 +27,11 @@ async function getUserByPhone(phoneNumber) {
 async function getUserByTelegramChatId(telegramChatId) {
   try {
     const db = getDb();
-    const user = await db.collection('users').findOne({ telegram_chat_id: telegramChatId });
-    return user ? { ...user, id: user._id.toString() } : null;
+    const result = await db.query(
+      'SELECT * FROM users WHERE telegram_chat_id = $1',
+      [telegramChatId]
+    );
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error getting user by Telegram chat ID:', error);
     throw error;
@@ -40,8 +46,11 @@ async function getUserByTelegramChatId(telegramChatId) {
 async function getUserById(userId) {
   try {
     const db = getDb();
-    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-    return user ? { ...user, id: user._id.toString() } : null;
+    const result = await db.query(
+      'SELECT * FROM users WHERE id = $1',
+      [userId]
+    );
+    return result.rows[0] || null;
   } catch (error) {
     console.error('Error getting user by ID:', error);
     throw error;
@@ -57,22 +66,15 @@ async function getUserById(userId) {
 async function createUser(phoneNumber, planType = 'free') {
   try {
     const db = getDb();
-    const result = await db.collection('users').insertOne({
-      phone_number: phoneNumber,
-      telegram_chat_id: null,
-      plan_type: planType,
-      created_at: new Date()
-    });
+    const result = await db.query(
+      `INSERT INTO users (phone_number, plan_type) 
+       VALUES ($1, $2) 
+       RETURNING *`,
+      [phoneNumber, planType]
+    );
     
     console.log(`✓ Created new user: ${phoneNumber} with plan: ${planType}`);
-    
-    return {
-      id: result.insertedId.toString(),
-      phone_number: phoneNumber,
-      telegram_chat_id: null,
-      plan_type: planType,
-      created_at: new Date()
-    };
+    return result.rows[0];
   } catch (error) {
     console.error('Error creating user:', error);
     throw error;
@@ -88,22 +90,15 @@ async function createUser(phoneNumber, planType = 'free') {
 async function createTelegramUser(telegramChatId, planType = 'free') {
   try {
     const db = getDb();
-    const result = await db.collection('users').insertOne({
-      phone_number: null,
-      telegram_chat_id: telegramChatId,
-      plan_type: planType,
-      created_at: new Date()
-    });
+    const result = await db.query(
+      `INSERT INTO users (telegram_chat_id, plan_type) 
+       VALUES ($1, $2) 
+       RETURNING *`,
+      [telegramChatId, planType]
+    );
     
     console.log(`✓ Created new Telegram user: ${telegramChatId} with plan: ${planType}`);
-    
-    return {
-      id: result.insertedId.toString(),
-      phone_number: null,
-      telegram_chat_id: telegramChatId,
-      plan_type: planType,
-      created_at: new Date()
-    };
+    return result.rows[0];
   } catch (error) {
     console.error('Error creating Telegram user:', error);
     throw error;
@@ -145,9 +140,9 @@ async function getOrCreateTelegramUser(telegramChatId) {
 async function updateUserPlan(userId, planType) {
   try {
     const db = getDb();
-    await db.collection('users').updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: { plan_type: planType } }
+    await db.query(
+      'UPDATE users SET plan_type = $1 WHERE id = $2',
+      [planType, userId]
     );
     
     return getUserById(userId);
