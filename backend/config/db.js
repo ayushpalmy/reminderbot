@@ -18,19 +18,22 @@ async function initDatabase() {
     const client = await pool.connect();
     console.log('✓ PostgreSQL connection established');
     
-    // Create users table
+    // Create users table (CHANGE 1 & 4: Add daily_reminder_count, last_count_reset, streak_count)
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         phone_number VARCHAR(50) UNIQUE,
         telegram_chat_id VARCHAR(100) UNIQUE,
         plan_type VARCHAR(20) DEFAULT 'free',
+        daily_reminder_count INTEGER DEFAULT 0,
+        last_count_reset TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        streak_count INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log('✓ Users table ready');
     
-    // Create reminders table
+    // Create reminders table (CHANGE 2 & 5: Add follow_up_sent, snooze_count)
     await client.query(`
       CREATE TABLE IF NOT EXISTS reminders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -40,6 +43,8 @@ async function initDatabase() {
         repeat_type VARCHAR(20) DEFAULT 'once',
         is_done BOOLEAN DEFAULT false,
         last_sent_at TIMESTAMP,
+        follow_up_sent BOOLEAN DEFAULT false,
+        snooze_count INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);

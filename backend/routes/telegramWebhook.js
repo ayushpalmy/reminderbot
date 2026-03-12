@@ -20,6 +20,7 @@ const {
   updateReminderTime
 } = require('../services/conversationService');
 const { getMessage } = require('../services/multilingualMessages');
+const { checkDailyLimit } = require('../services/streakService'); // CHANGE 1: Daily limit check
 const moment = require('moment-timezone');
 
 // Reminder templates with detailed flows
@@ -237,7 +238,18 @@ router.post('/webhook', async (req, res) => {
               await sendTelegramMessage(chatId, "You don't have any active reminders.");
             } else {
               await markReminderDone(recentReminder.id);
-              await sendTelegramMessage(chatId, "✅ Marked as done!");
+              
+              // CHANGE 4: Update streak and show milestone message
+              const { updateStreak, getStreakMessage } = require('../services/streakService');
+              const newStreak = await updateStreak(user.id);
+              const streakMsg = getStreakMessage(newStreak);
+              
+              let message = "✅ Marked as done!";
+              if (streakMsg) {
+                message += `\n\n${streakMsg}`;
+              }
+              
+              await sendTelegramMessage(chatId, message);
             }
             clearUserState(chatId);
           } catch (error) {
@@ -252,8 +264,19 @@ router.post('/webhook', async (req, res) => {
             if (!recentReminder) {
               await sendTelegramMessage(chatId, "You don't have any active reminders.");
             } else {
-              await snoozeReminder(recentReminder.id);
-              await sendTelegramMessage(chatId, "⏰ Snoozed for 2 hours!");
+              // CHANGE 5: Track snooze count and show nudge after 2 snoozes
+              const snoozedReminder = await snoozeReminder(recentReminder.id);
+              
+              let message = "⏰ Snoozed for 2 hours!";
+              
+              if (snoozedReminder.snooze_count >= 2) {
+                message = `You've snoozed this twice 😅
+
+Are you sure you want to keep delaying?
+Reply DONE to mark complete or SNOOZE for one last time.`;
+              }
+              
+              await sendTelegramMessage(chatId, message);
             }
             clearUserState(chatId);
           } catch (error) {
@@ -291,28 +314,27 @@ router.post('/webhook', async (req, res) => {
         if (messageText >= '1' && messageText <= '7' && messageText.length === 1) {
           const templateNum = parseInt(messageText);
           
-          // Check free plan limit first (IMPROVEMENT 1: Show payment link automatically)
-          if (user.plan_type === 'free') {
-            const activeCount = await getActiveReminderCount(user.id);
-            
-            if (activeCount >= 3) {
+          // CHANGE 1: Check daily limit (free uses active count, paid uses daily count)
+          const dailyCheck = await checkDailyLimit(user.id, user.plan_type);
+          
+          if (!dailyCheck.allowed) {
+            if (user.plan_type === 'free') {
               try {
-                // Detect language
                 const language = await detectLanguage(messageText);
-                
-                // Create payment link
                 const paymentLink = await createPaymentLink(chatId, user.id);
                 const message = getMessage('limit_reached', language, { link: paymentLink.short_url });
-                
                 await sendTelegramMessage(chatId, message);
               } catch (error) {
                 console.error('[TELEGRAM ERROR]:', error);
-                await sendTelegramMessage(chatId, "⚠️ You've used all 3 free reminders. Reply UPGRADE to get unlimited reminders.");
+                await sendTelegramMessage(chatId, "⚠️ You've used all 3 free reminders. Reply UPGRADE.");
               }
-              
-              clearUserState(chatId);
-              return res.status(200).json({ ok: true });
+            } else {
+              // Paid plan reached daily limit
+              await sendTelegramMessage(chatId, "⚠️ You've reached today's limit. Your reminders continue tomorrow!");
             }
+            
+            clearUserState(chatId);
+            return res.status(200).json({ ok: true });
           }
           
           if (templateNum === 7) {
@@ -725,11 +747,11 @@ router.post('/webhook', async (req, res) => {
         if (parsedReminder && parsedReminder.remind_at) {
           console.log('[TELEGRAM] ✓ Parsed successfully with time');
           
-          // Check free plan limit (IMPROVEMENT 1: Show payment link automatically)
-          if (user.plan_type === 'free') {
-            const activeCount = await getActiveReminderCount(user.id);
-            
-            if (activeCount >= 3) {
+          // CHANGE 1: Check daily limit
+          const dailyCheck = await checkDailyLimit(user.id, user.plan_type);
+          
+          if (!dailyCheck.allowed) {
+            if (user.plan_type === 'free') {
               try {
                 const language = await detectLanguage(messageText);
                 const paymentLink = await createPaymentLink(chatId, user.id);
@@ -738,8 +760,10 @@ router.post('/webhook', async (req, res) => {
               } catch (error) {
                 await sendTelegramMessage(chatId, "⚠️ You've used all 3 free reminders. Reply UPGRADE.");
               }
-              return res.status(200).json({ ok: true });
+            } else {
+              await sendTelegramMessage(chatId, "⚠️ You've reached today's limit. Your reminders continue tomorrow!");
             }
+            return res.status(200).json({ ok: true });
           }
           
           // Create reminder
@@ -765,11 +789,11 @@ router.post('/webhook', async (req, res) => {
           const extractedText = await parseReminderMessage(messageText, true);
           
           if (extractedText && extractedText.reminder_text) {
-            // Check free plan limit before asking for time (IMPROVEMENT 1)
-            if (user.plan_type === 'free') {
-              const activeCount = await getActiveReminderCount(user.id);
-              
-              if (activeCount >= 3) {
+            // CHANGE 1: Check daily limit before asking for time
+            const dailyCheck = await checkDailyLimit(user.id, user.plan_type);
+            
+            if (!dailyCheck.allowed) {
+              if (user.plan_type === 'free') {
                 try {
                   const language = extractedText.detected_language || 'english';
                   const paymentLink = await createPaymentLink(chatId, user.id);
@@ -778,8 +802,10 @@ router.post('/webhook', async (req, res) => {
                 } catch (error) {
                   await sendTelegramMessage(chatId, "⚠️ You've used all 3 free reminders. Reply UPGRADE.");
                 }
-                return res.status(200).json({ ok: true });
+              } else {
+                await sendTelegramMessage(chatId, "⚠️ You've reached today's limit. Your reminders continue tomorrow!");
               }
+              return res.status(200).json({ ok: true });
             }
             
             // Got reminder text without time - ask for time (IMPROVEMENT 2: Multilingual)

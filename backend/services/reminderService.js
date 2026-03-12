@@ -1,4 +1,5 @@
 const { getDb } = require('../config/db');
+const { incrementDailyCount } = require('./streakService');
 
 /**
  * Get count of active reminders for a user
@@ -20,7 +21,7 @@ async function getActiveReminderCount(userId) {
 }
 
 /**
- * Create a new reminder
+ * Create a new reminder (CHANGE 1: Increment daily count for paid plans)
  * @param {string} userId 
  * @param {string} reminderText 
  * @param {Date} remindAt 
@@ -36,6 +37,12 @@ async function createReminder(userId, reminderText, remindAt, repeatType = 'once
        RETURNING *`,
       [userId, reminderText, remindAt, repeatType]
     );
+    
+    // CHANGE 1: Increment daily count for paid plans
+    const userResult = await db.query('SELECT plan_type FROM users WHERE id = $1', [userId]);
+    if (userResult.rows[0] && userResult.rows[0].plan_type !== 'free') {
+      await incrementDailyCount(userId);
+    }
     
     console.log(`✓ Created reminder for user_id ${userId}: ${reminderText}`);
     return result.rows[0];
