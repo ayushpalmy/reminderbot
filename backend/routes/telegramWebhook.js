@@ -271,6 +271,75 @@ router.post('/webhook', async (req, res) => {
 });
 
 /**
+ * GET /api/telegram/setup-webhook
+ * Automatically set up the Telegram webhook - just visit this URL in browser
+ */
+router.get('/setup-webhook', async (req, res) => {
+  try {
+    const { setTelegramWebhook, getTelegramWebhookInfo } = require('../services/telegramService');
+    
+    // Get APP_URL from environment or use default
+    const appUrl = process.env.APP_URL || 'https://whatsapp-reminder-bot-i2e2.onrender.com';
+    const webhookUrl = `${appUrl}/api/telegram/webhook`;
+    
+    console.log('[TELEGRAM SETUP] Setting webhook to:', webhookUrl);
+    
+    await setTelegramWebhook(webhookUrl);
+    const info = await getTelegramWebhookInfo();
+    
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Telegram Webhook Setup</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+          .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 5px; }
+          .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; padding: 15px; border-radius: 5px; margin-top: 20px; }
+          pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+          h1 { color: #0088cc; }
+        </style>
+      </head>
+      <body>
+        <h1>✅ Telegram Webhook Setup Successful!</h1>
+        <div class="success">
+          <strong>Webhook URL:</strong> ${webhookUrl}<br>
+          <strong>Status:</strong> Active
+        </div>
+        <div class="info">
+          <strong>Current Webhook Info:</strong>
+          <pre>${JSON.stringify(info, null, 2)}</pre>
+        </div>
+        <p>Your Telegram bot is now ready to receive messages!</p>
+      </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error('[TELEGRAM SETUP ERROR]:', error);
+    res.status(500).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Webhook Setup Failed</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+          .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 15px; border-radius: 5px; }
+        </style>
+      </head>
+      <body>
+        <h1>❌ Failed to Set Up Webhook</h1>
+        <div class="error">
+          <strong>Error:</strong> ${error.message}<br>
+          <strong>Details:</strong> ${JSON.stringify(error.response?.data || {}, null, 2)}
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
+
+/**
  * POST /api/telegram/setup-webhook
  * Helper endpoint to set up the Telegram webhook
  * Call this once after deployment with your webhook URL
