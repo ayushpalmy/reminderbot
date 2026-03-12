@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getOrCreateTelegramUser, getUserByTelegramChatId } = require('../services/userService');
 const { createReminder, getActiveReminderCount } = require('../services/reminderService');
-const { parseReminderMessage } = require('../services/reminderParser');
+const { parseReminderMessage, parseTimeInput } = require('../services/reminderParser');
 const { 
   sendTelegramMessage,
   sendTelegramReminderConfirmation,
@@ -50,6 +50,29 @@ Just type a number to pick, or type anything naturally to set a custom reminder!
   
   await sendTelegramMessage(chatId, helpMessage);
   setUserState(chatId, 'waiting_menu_selection', {});
+}
+
+/**
+ * Helper to check if user is in middle of reminder setup
+ * Returns the current question if in setup, null otherwise
+ */
+function getReminderSetupContext(userState) {
+  if (!userState || !userState.state) return null;
+  
+  const reminderStates = {
+    'template_medicine_name': 'What medicine should I remind you about?',
+    'template_medicine_frequency': 'How often?\n\n1. Daily\n2. Weekly\n3. Monthly\n4. One time',
+    'template_medicine_time': 'At what time? Example: 9AM or 8:30PM',
+    'template_bill_date': 'Which date every month? Example: 5th or 15th',
+    'template_bill_time': 'At what time? Example: 9AM',
+    'template_rent_date': 'Which date every month? Example: 1st',
+    'template_activity_frequency': 'How often?\n\n1. Daily\n2. Weekly\n3. Monthly\n4. One time',
+    'template_activity_time': 'At what time? Example: 6PM',
+    'waiting_custom_reminder': 'What would you like to be reminded about?',
+    'waiting_natural_time': 'When should I remind you? Example: today 6PM, tomorrow 9AM, every day 8PM'
+  };
+  
+  return reminderStates[userState.state] || null;
 }
 
 /**
@@ -103,6 +126,21 @@ router.post('/webhook', async (req, res) => {
         console.log('[TELEGRAM] HELP command');
         await showMainMenu(chatId);
         return res.status(200).json({ ok: true });
+      }
+      
+      // Check if user typed something unrelated while in reminder setup
+      const setupContext = getReminderSetupContext(userState);
+      if (setupContext && !['CANCEL', 'MY REMINDERS', 'UPGRADE', 'HELP', '/HELP'].includes(messageUpper)) {
+        // Check if input seems unrelated (like greetings or random text)
+        const unrelatedPatterns = ['WHO ARE YOU', 'WHAT CAN YOU DO', 'THANKS', 'THANK YOU', 'OK', 'OKAY'];
+        if (unrelatedPatterns.some(pattern => messageUpper.includes(pattern))) {
+          const templateName = userState.data.text || userState.data.medicineName || 'your reminder';
+          await sendTelegramMessage(
+            chatId,
+            `Let's finish setting up your ${templateName} first.\n\n${setupContext}`
+          );
+          return res.status(200).json({ ok: true });
+        }
       }
       
       // Handle MY REMINDERS
@@ -275,20 +313,20 @@ router.post('/webhook', async (req, res) => {
             
             // Start template flow based on type
             if (template.type === 'medicine') {
-              setUserState(chatId, 'template_medicine_name', { templateNum });
+              setUserState(chatId, 'template_medicine_name', { templateNum, templateType: 'medicine', emoji: template.emoji });
               await sendTelegramMessage(chatId, `${template.emoji} Medicine reminder — What medicine should I remind you about?`);
               
             } else if (template.type === 'bill' || template.type === 'creditcard') {
-              setUserState(chatId, 'template_bill_date', { templateNum, text: template.text });
+              setUserState(chatId, 'template_bill_date', { templateNum, text: template.text, templateType: template.type, emoji: template.emoji });
               await sendTelegramMessage(chatId, `${template.emoji} ${template.text} — Which date every month should I remind you?\nExample: 5th or 15th`);
               
             } else if (template.type === 'rent') {
-              setUserState(chatId, 'template_rent_date', { templateNum });
+              setUserState(chatId, 'template_rent_date', { templateNum, templateType: 'rent', emoji: template.emoji });
               await sendTelegramMessage(chatId, `${template.emoji} Rent payment — Which date every month should I remind you?\nExample: 1st or 5th`);
               
             } else if (template.type === 'gym' || template.type === 'study') {
-              setUserState(chatId, 'template_activity_frequency', { templateNum, text: template.text, emoji: template.emoji });
-              await sendTelegramMessage(chatId, `${template.emoji} ${template.text} reminder — How often?\n\nReply:\nDaily\nWeekly\nOne time`);
+              setUserState(chatId, 'template_activity_frequency', { templateNum, text: template.text, emoji: template.emoji, templateType: template.type });
+              await sendTelegramMessage(chatId, `${template.emoji} ${template.text} reminder — How often?\n\n1. Daily\n2. Weekly\n3. Monthly\n4. One time`);
             }
           }
           
@@ -304,36 +342,49 @@ router.post('/webhook', async (req, res) => {
       
       // Medicine flow: Step 1 - got medicine name, ask frequency
       if (userState && userState.state === 'template_medicine_name') {
-        setUserState(chatId, 'template_medicine_frequency', { medicineName: messageText });
-        await sendTelegramMessage(chatId, "Got it! How often?\n\nReply:\nDaily\nWeekly\nOne time");
+        setUserState(chatId, 'template_medicine_frequency', { 
+          medicineName: messageText,
+          templateType: userState.data.templateType,
+          emoji: userState.data.emoji
+        });
+        await sendTelegramMessage(chatId, "Got it! How often?\n\n1. Daily\n2. Weekly\n3. Monthly\n4. One time");
         return res.status(200).json({ ok: true });
       }
       
-      // Medicine flow: Step 2 - got frequency, ask time
+      // Medicine flow: Step 2 - got frequency, ask time (BUG FIX 3: Handle numbered options)
       if (userState && userState.state === 'template_medicine_frequency') {
         const frequency = messageUpper;
         let repeatType = 'once';
         
-        if (frequency.includes('DAILY') || frequency.includes('DAY')) {
+        // Handle both numbers and text
+        if (messageText === '1' || frequency.includes('DAILY') || frequency.includes('DAY')) {
           repeatType = 'daily';
-        } else if (frequency.includes('WEEKLY') || frequency.includes('WEEK')) {
+        } else if (messageText === '2' || frequency.includes('WEEKLY') || frequency.includes('WEEK')) {
           repeatType = 'weekly';
+        } else if (messageText === '3' || frequency.includes('MONTHLY') || frequency.includes('MONTH')) {
+          repeatType = 'monthly';
+        } else if (messageText === '4' || frequency.includes('ONE TIME') || frequency.includes('ONCE')) {
+          repeatType = 'once';
         }
         
         setUserState(chatId, 'template_medicine_time', { 
           medicineName: userState.data.medicineName,
-          repeatType
+          repeatType,
+          templateType: userState.data.templateType,
+          emoji: userState.data.emoji
         });
         await sendTelegramMessage(chatId, "At what time?\nExample: 9AM or 8:30PM");
         return res.status(200).json({ ok: true });
       }
       
-      // Medicine flow: Step 3 - got time, create reminder
+      // Medicine flow: Step 3 - got time, create reminder (BUG FIX 4: Smart time parsing)
       if (userState && userState.state === 'template_medicine_time') {
         try {
           const medicineName = userState.data.medicineName;
           const repeatType = userState.data.repeatType;
-          const parsedTime = await parseReminderMessage(`remind me to take ${medicineName} ${repeatType === 'once' ? 'tomorrow' : 'every day'} at ${messageText}`);
+          
+          // Smart time parsing
+          const parsedTime = await parseTimeInput(messageText, `take ${medicineName}`);
           
           if (parsedTime && parsedTime.remind_at) {
             const reminderText = `Take ${medicineName}`;
@@ -344,11 +395,11 @@ router.post('/webhook', async (req, res) => {
               repeatType
             );
             
-            const repeatInfo = repeatType === 'daily' ? ' every day' : repeatType === 'weekly' ? ' every week' : '';
+            const repeatInfo = repeatType === 'daily' ? ' every day' : repeatType === 'weekly' ? ' every week' : repeatType === 'monthly' ? ' every month' : '';
             await sendTelegramMessage(chatId, `✅ Reminder set — ${reminderText}${repeatInfo} at ${parsedTime.formatted_time}`);
             clearUserState(chatId);
           } else {
-            await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: 9AM or 3:30PM");
+            await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: 9AM or 3:30PM or just 5");
           }
         } catch (error) {
           console.error('[TELEGRAM ERROR]:', error);
@@ -368,17 +419,24 @@ router.post('/webhook', async (req, res) => {
           return res.status(200).json({ ok: true });
         }
         
-        setUserState(chatId, 'template_bill_time', { date, billText });
+        setUserState(chatId, 'template_bill_time', { 
+          date, 
+          billText,
+          templateType: userState.data.templateType,
+          emoji: userState.data.emoji
+        });
         await sendTelegramMessage(chatId, "At what time?\nExample: 9AM or 10AM");
         return res.status(200).json({ ok: true });
       }
       
-      // Bill/Rent flow: Step 2 - got time, create reminder
+      // Bill/Rent flow: Step 2 - got time, create reminder (BUG FIX 4: Smart time parsing)
       if (userState && userState.state === 'template_bill_time') {
         try {
           const date = userState.data.date;
           const billText = userState.data.billText;
-          const parsedTime = await parseReminderMessage(`remind me to ${billText} on ${date}th of every month at ${messageText}`);
+          
+          // Smart time parsing
+          const parsedTime = await parseTimeInput(messageText, `${billText} on ${date}th of every month`);
           
           if (parsedTime && parsedTime.remind_at) {
             const reminder = await createReminder(
@@ -391,7 +449,7 @@ router.post('/webhook', async (req, res) => {
             await sendTelegramMessage(chatId, `✅ Reminder set — ${billText} on ${date}th every month at ${parsedTime.formatted_time}`);
             clearUserState(chatId);
           } else {
-            await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: 9AM or 10AM");
+            await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: 9AM or 10AM or just 9");
           }
         } catch (error) {
           console.error('[TELEGRAM ERROR]:', error);
@@ -401,32 +459,40 @@ router.post('/webhook', async (req, res) => {
         return res.status(200).json({ ok: true });
       }
       
-      // Gym/Study flow: Step 1 - got frequency, ask time
+      // Gym/Study flow: Step 1 - got frequency, ask time (BUG FIX 3: Handle numbered options)
       if (userState && userState.state === 'template_activity_frequency') {
         const frequency = messageUpper;
         let repeatType = 'once';
         
-        if (frequency.includes('DAILY') || frequency.includes('DAY')) {
+        // Handle both numbers and text
+        if (messageText === '1' || frequency.includes('DAILY') || frequency.includes('DAY')) {
           repeatType = 'daily';
-        } else if (frequency.includes('WEEKLY') || frequency.includes('WEEK')) {
+        } else if (messageText === '2' || frequency.includes('WEEKLY') || frequency.includes('WEEK')) {
           repeatType = 'weekly';
+        } else if (messageText === '3' || frequency.includes('MONTHLY') || frequency.includes('MONTH')) {
+          repeatType = 'monthly';
+        } else if (messageText === '4' || frequency.includes('ONE TIME') || frequency.includes('ONCE')) {
+          repeatType = 'once';
         }
         
         setUserState(chatId, 'template_activity_time', { 
           text: userState.data.text,
           emoji: userState.data.emoji,
-          repeatType
+          repeatType,
+          templateType: userState.data.templateType
         });
         await sendTelegramMessage(chatId, "At what time?\nExample: 6PM or 7:30AM");
         return res.status(200).json({ ok: true });
       }
       
-      // Gym/Study flow: Step 2 - got time, create reminder
+      // Gym/Study flow: Step 2 - got time, create reminder (BUG FIX 4: Smart time parsing)
       if (userState && userState.state === 'template_activity_time') {
         try {
           const activityText = userState.data.text;
           const repeatType = userState.data.repeatType;
-          const parsedTime = await parseReminderMessage(`remind me to ${activityText} ${repeatType === 'once' ? 'tomorrow' : 'every day'} at ${messageText}`);
+          
+          // Smart time parsing
+          const parsedTime = await parseTimeInput(messageText, activityText);
           
           if (parsedTime && parsedTime.remind_at) {
             const reminder = await createReminder(
@@ -436,11 +502,11 @@ router.post('/webhook', async (req, res) => {
               repeatType
             );
             
-            const repeatInfo = repeatType === 'daily' ? ' every day' : repeatType === 'weekly' ? ' every week' : '';
+            const repeatInfo = repeatType === 'daily' ? ' every day' : repeatType === 'weekly' ? ' every week' : repeatType === 'monthly' ? ' every month' : '';
             await sendTelegramMessage(chatId, `✅ Reminder set — ${activityText}${repeatInfo} at ${parsedTime.formatted_time}`);
             clearUserState(chatId);
           } else {
-            await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: 6PM or 7:30AM");
+            await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: 6PM or 7:30AM or just 6");
           }
         } catch (error) {
           console.error('[TELEGRAM ERROR]:', error);
@@ -450,37 +516,67 @@ router.post('/webhook', async (req, res) => {
         return res.status(200).json({ ok: true });
       }
       
-      // STATE: waiting_custom_reminder
+      // STATE: waiting_custom_reminder (BUG FIX 1 & 2: Extract text, ask for time)
       if (userState && userState.state === 'waiting_custom_reminder') {
-        console.log('[TELEGRAM] Processing custom reminder');
+        console.log('[TELEGRAM] Processing custom reminder text');
         
         try {
-          const parsedReminder = await parseReminderMessage(messageText);
+          // Try to extract just the reminder text first
+          const extractedText = await parseReminderMessage(messageText, true);
           
-          if (parsedReminder) {
+          if (extractedText && extractedText.reminder_text) {
+            // Got reminder text, now ask for time
+            setUserState(chatId, 'waiting_natural_time', { 
+              reminderText: extractedText.reminder_text 
+            });
+            await sendTelegramMessage(
+              chatId,
+              "When should I remind you? Example: today 6PM, tomorrow 9AM, every day 8PM"
+            );
+          } else {
+            await sendTelegramMessage(chatId, "I couldn't understand that. Please tell me what you want to be reminded about.");
+          }
+        } catch (error) {
+          console.error('[TELEGRAM ERROR]:', error);
+          await sendTelegramMessage(chatId, "Sorry, I couldn't understand that. Please try again.");
+        }
+        
+        return res.status(200).json({ ok: true });
+      }
+      
+      // STATE: waiting_natural_time (BUG FIX 1: Handle time input after text extraction)
+      if (userState && userState.state === 'waiting_natural_time') {
+        console.log('[TELEGRAM] Processing natural reminder time');
+        
+        try {
+          const reminderText = userState.data.reminderText;
+          
+          // Parse time input with smart parsing
+          const parsedTime = await parseTimeInput(messageText, reminderText);
+          
+          if (parsedTime && parsedTime.remind_at) {
             const reminder = await createReminder(
               user.id,
-              parsedReminder.reminder_text,
-              parsedReminder.remind_at,
-              parsedReminder.repeat_type
+              reminderText,
+              parsedTime.remind_at,
+              parsedTime.repeat_type
             );
             
             await sendTelegramReminderConfirmation(
               chatId,
-              parsedReminder.reminder_text,
-              parsedReminder.formatted_date,
-              parsedReminder.formatted_time,
-              parsedReminder.repeat_type
+              reminderText,
+              parsedTime.formatted_date,
+              parsedTime.formatted_time,
+              parsedTime.repeat_type
             );
             
             clearUserState(chatId);
           } else {
-            await sendTelegramParseErrorMessage(chatId);
-            clearUserState(chatId);
+            await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: today 6PM, tomorrow 9AM, every day 8PM");
           }
         } catch (error) {
           console.error('[TELEGRAM ERROR]:', error);
-          await sendTelegramParseErrorMessage(chatId);
+          await sendTelegramMessage(chatId, "Sorry, I couldn't process that time.");
           clearUserState(chatId);
         }
         
@@ -522,14 +618,15 @@ router.post('/webhook', async (req, res) => {
         return res.status(200).json({ ok: true });
       }
       
-      // Parse as natural language reminder
+      // Parse as natural language reminder (BUG FIX 1 & 2: Extract text first, ask time)
       console.log('[TELEGRAM] Parsing as natural language reminder...');
       
       try {
+        // First try full parse with time
         const parsedReminder = await parseReminderMessage(messageText);
         
-        if (parsedReminder) {
-          console.log('[TELEGRAM] ✓ Parsed successfully');
+        if (parsedReminder && parsedReminder.remind_at) {
+          console.log('[TELEGRAM] ✓ Parsed successfully with time');
           
           // Check free plan limit
           if (user.plan_type === 'free') {
@@ -562,7 +659,35 @@ router.post('/webhook', async (req, res) => {
           );
           
         } else {
-          await sendTelegramParseErrorMessage(chatId);
+          // Try to extract just the reminder text without time
+          console.log('[TELEGRAM] No time found, extracting text only...');
+          const extractedText = await parseReminderMessage(messageText, true);
+          
+          if (extractedText && extractedText.reminder_text) {
+            // Check free plan limit before asking for time
+            if (user.plan_type === 'free') {
+              const activeCount = await getActiveReminderCount(user.id);
+              
+              if (activeCount >= 3) {
+                await sendTelegramMessage(
+                  chatId,
+                  "⚠️ You've used all 3 free reminders.\nReply UPGRADE to get unlimited reminders for ₹49/month"
+                );
+                return res.status(200).json({ ok: true });
+              }
+            }
+            
+            // Got reminder text without time - ask for time (BUG FIX 1 & 2)
+            setUserState(chatId, 'waiting_natural_time', { 
+              reminderText: extractedText.reminder_text 
+            });
+            await sendTelegramMessage(
+              chatId,
+              "When should I remind you? Example: today 6PM, tomorrow 9AM, every day 8PM"
+            );
+          } else {
+            await sendTelegramParseErrorMessage(chatId);
+          }
         }
         
       } catch (error) {
