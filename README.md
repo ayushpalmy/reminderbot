@@ -207,7 +207,7 @@ CREATE TABLE subscriptions (
 
 - **Backend:** Node.js, Express.js
 - **Database:** PostgreSQL
-- **NLP:** Google Gemini (gemini-2.0-flash)
+- **NLP:** Groq API (llama-3.3-70b-versatile)
 - **Payments:** Razorpay
 - **Messaging:** WhatsApp Cloud API (Meta)
 - **Scheduling:** node-cron

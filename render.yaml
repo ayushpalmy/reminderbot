@@ -25,7 +25,7 @@ services:
         sync: false
       - key: WHATSAPP_VERIFY_TOKEN
         generateValue: true
-      - key: GEMINI_API_KEY
+      - key: GROQ_API_KEY
         sync: false
       - key: RAZORPAY_KEY_ID
         sync: false

@@ -1,13 +1,12 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 const moment = require('moment-timezone');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
 
 /**
- * Parse a natural language reminder message using Google Gemini
+ * Parse a natural language reminder message using Groq API
  * @param {string} message - The user's message
  * @returns {Promise<Object>} - Parsed reminder data or null if not a reminder
  */
@@ -52,13 +51,29 @@ OR if not a reminder:
 
 User message: ${message}`;
 
-    const result = await model.generateContent(systemPrompt);
-    const response = await result.response;
-    const content = response.text().trim();
+    const chatCompletion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'user',
+          content: systemPrompt
+        }
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.1,
+      max_tokens: 500,
+      response_format: { type: 'json_object' }
+    });
     
-    console.log('\n[GEMINI RESPONSE]:', content);
+    const content = chatCompletion.choices[0]?.message?.content?.trim();
     
-    // Extract JSON from response (Gemini sometimes adds markdown code blocks)
+    if (!content) {
+      console.error('[GROQ] No response content received');
+      return null;
+    }
+    
+    console.log('\n[GROQ RESPONSE]:', content);
+    
+    // Extract JSON from response (handle potential markdown code blocks)
     let jsonContent = content;
     if (content.includes('```json')) {
       jsonContent = content.match(/```json\n([\s\S]*?)\n```/)?.[1] || content;
@@ -76,7 +91,7 @@ User message: ${message}`;
     // Validate and convert remind_at to Date object
     const remindAtMoment = moment.tz(parsed.remind_at, TIMEZONE);
     if (!remindAtMoment.isValid()) {
-      console.error('Invalid date format from Gemini:', parsed.remind_at);
+      console.error('[GROQ] Invalid date format:', parsed.remind_at);
       return null;
     }
     
@@ -89,9 +104,9 @@ User message: ${message}`;
     };
     
   } catch (error) {
-    console.error('Error parsing reminder with Gemini:', error);
+    console.error('[GROQ] Error parsing reminder:', error);
     if (error.response) {
-      console.error('Gemini API Error:', error.response);
+      console.error('[GROQ] API Error:', error.response);
     }
     throw error;
   }

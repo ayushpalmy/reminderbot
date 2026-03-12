@@ -275,7 +275,7 @@ router.post('/', async (req, res) => {
               
             } else {
               // Not a command and not in conversation state - parse as new reminder
-              console.log('[PROCESSING] Parsing as new reminder with Gemini...');
+              console.log('[PROCESSING] Parsing as new reminder with Groq...');
               
               try {
                 const parsedReminder = await parseReminderMessage(messageBody);
