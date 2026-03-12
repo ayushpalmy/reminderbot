@@ -4,7 +4,7 @@
 
 ### What Changed
 - **Replaced:** OpenAI API (gpt-4o-mini) 
-- **With:** Google Gemini API (gemini-1.5-flash)
+- **With:** Google Gemini API (gemini-2.0-flash)
 - **Package:** Installed `@google/generative-ai@0.24.1`
 
 ### Files Modified
@@ -19,7 +19,7 @@
   
   // After
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   ```
 
 - Updated API call:

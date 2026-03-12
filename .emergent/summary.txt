@@ -9,7 +9,7 @@ The user wants to build a backend for a WhatsApp reminder bot using Node.js and 
     *   Database Schema: , , .
 2.  **Reminder Parsing:**
     *   Parse natural language messages (e.g., remind me to pay bills tomorrow at 8pm) to extract reminder details using an LLM.
-    *   Initially used OpenAI, but was later switched to **Google Gemini (gemini-1.5-flash)**.
+    *   Initially used OpenAI, but was later switched to **Google Gemini (gemini-2.0-flash)**.
 3.  **Core Features:**
     *   **Recurring Reminders:** A cron job runs every minute to check for and send due reminders. It handles recurring schedules (daily, weekly, monthly).
     *   **User Commands:** Implement handlers for , , , , , , and .
@@ -156,7 +156,7 @@ A functional Node.js/Express backend for a WhatsApp reminder bot connected to a 
     *   No mocks are currently active. Features are implemented but non-functional without real credentials.
 
 **3rd Party Integrations**
-*   **Google Gemini (gemini-1.5-flash):** Used for natural language processing. Requires User API Key.
+*   **Google Gemini (gemini-2.0-flash):** Used for natural language processing. Requires User API Key.
 *   **WhatsApp Cloud API:** Used for messaging. Requires User API Key.
 *   **Razorpay:** Used for payment processing. Requires User API Key.
 *   **Telegram Bot API:** Used for messaging. Requires User API Key.
