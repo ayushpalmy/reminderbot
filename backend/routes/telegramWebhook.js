@@ -21,6 +21,16 @@ const {
 } = require('../services/conversationService');
 const moment = require('moment-timezone');
 
+// Reminder templates
+const REMINDER_TEMPLATES = {
+  1: { text: 'Take medicine', emoji: '💊' },
+  2: { text: 'Pay electricity bill', emoji: '💡' },
+  3: { text: 'Pay rent', emoji: '🏠' },
+  4: { text: 'Pay credit card bill', emoji: '💳' },
+  5: { text: 'Go to gym', emoji: '🏋️' },
+  6: { text: 'Study', emoji: '📚' }
+};
+
 /**
  * POST /api/telegram/webhook
  * Receive messages from Telegram
@@ -43,9 +53,9 @@ router.post('/webhook', async (req, res) => {
       // Get or create user
       const user = await getOrCreateTelegramUser(chatId);
       
-      // Handle commands
-      if (messageUpper === 'DONE') {
-        console.log('[TELEGRAM] Command: DONE');
+      // Handle numbered responses (1, 2, 3 for DONE/SNOOZE/RESCHEDULE)
+      if (messageText === '1' || messageUpper === 'DONE') {
+        console.log('[TELEGRAM] Command: DONE (via number or text)');
         
         try {
           const recentReminder = await getMostRecentReminder(user.id);
@@ -61,8 +71,8 @@ router.post('/webhook', async (req, res) => {
           await sendTelegramMessage(chatId, "Sorry, there was an error.");
         }
         
-      } else if (messageUpper === 'SNOOZE') {
-        console.log('[TELEGRAM] Command: SNOOZE');
+      } else if (messageText === '2' || messageUpper === 'SNOOZE') {
+        console.log('[TELEGRAM] Command: SNOOZE (via number or text)');
         
         try {
           const recentReminder = await getMostRecentReminder(user.id);
@@ -78,8 +88,8 @@ router.post('/webhook', async (req, res) => {
           await sendTelegramMessage(chatId, "Sorry, there was an error.");
         }
         
-      } else if (messageUpper === 'RESCHEDULE') {
-        console.log('[TELEGRAM] Command: RESCHEDULE');
+      } else if (messageText === '3' || messageUpper === 'RESCHEDULE') {
+        console.log('[TELEGRAM] Command: RESCHEDULE (via number or text)');
         
         try {
           const recentReminder = await getMostRecentReminder(user.id);
@@ -133,18 +143,21 @@ router.post('/webhook', async (req, res) => {
         }
         
       } else if (messageUpper === 'HELP' || messageUpper === '/START' || messageUpper === '/HELP') {
-        console.log('[TELEGRAM] Command: HELP');
+        console.log('[TELEGRAM] Command: HELP/START');
         
         try {
-          const helpMessage = `🤖 ReminderBot Commands:
-• Just type naturally to set a reminder
-• MY REMINDERS — see all your reminders
-• DONE — mark last reminder complete
-• SNOOZE — remind me in 2 hours
-• RESCHEDULE — change reminder time
-• DELETE [number] — delete a reminder
-• UPGRADE — get Personal plan ₹49/month
-• HELP — show this menu`;
+          const helpMessage = `🤖 ReminderBot — What would you like to do?
+
+Common reminders:
+1. 💊 Medicine reminder
+2. 💡 Electricity bill
+3. 🏠 Rent payment
+4. 💳 Credit card bill
+5. 🏋️ Gym reminder
+6. 📚 Study reminder
+7. ✍️ Create my own reminder
+
+Just type a number to pick, or type anything naturally to set a custom reminder!`;
           
           await sendTelegramMessage(chatId, helpMessage);
         } catch (error) {
@@ -183,10 +196,130 @@ router.post('/webhook', async (req, res) => {
         }
         
       } else {
-        // Check conversation state or parse as new reminder
+        // Check conversation state
         const userState = getUserState(chatId);
         
-        if (userState && userState.state === 'waiting_reschedule') {
+        // Handle template selection (numbers 1-7)
+        if (messageText >= '1' && messageText <= '7' && messageText.length === 1) {
+          const templateNum = parseInt(messageText);
+          
+          if (templateNum === 7) {
+            // Custom reminder option
+            console.log('[TELEGRAM] User selected custom reminder (7)');
+            
+            // Check free plan limit for custom reminders
+            if (user.plan_type === 'free') {
+              const activeCount = await getActiveReminderCount(user.id);
+              
+              if (activeCount >= 3) {
+                await sendTelegramMessage(
+                  chatId,
+                  "⚠️ You've used all 3 free reminders.\nReply UPGRADE to get unlimited reminders for ₹49/month"
+                );
+                return res.status(200).json({ ok: true });
+              }
+            }
+            
+            setUserState(chatId, 'waiting_custom_reminder', {});
+            await sendTelegramMessage(chatId, "What would you like to be reminded about? Type naturally.");
+            
+          } else if (REMINDER_TEMPLATES[templateNum]) {
+            // Template reminder (1-6)
+            console.log(`[TELEGRAM] User selected template ${templateNum}`);
+            
+            // Check free plan limit
+            if (user.plan_type === 'free') {
+              const activeCount = await getActiveReminderCount(user.id);
+              
+              if (activeCount >= 3) {
+                await sendTelegramMessage(
+                  chatId,
+                  "⚠️ You've used all 3 free reminders.\nReply UPGRADE to get unlimited reminders for ₹49/month"
+                );
+                return res.status(200).json({ ok: true });
+              }
+            }
+            
+            const template = REMINDER_TEMPLATES[templateNum];
+            setUserState(chatId, 'waiting_template_time', { 
+              templateNum: templateNum,
+              reminderText: template.text
+            });
+            await sendTelegramMessage(
+              chatId, 
+              `${template.emoji} ${template.text}\n\nWhen should I remind you? Example: every day at 9PM`
+            );
+          }
+          
+        } else if (userState && userState.state === 'waiting_template_time') {
+          // User provided time for template reminder
+          console.log('[TELEGRAM] Processing template reminder time');
+          
+          try {
+            const reminderText = userState.data.reminderText;
+            const parsedTime = await parseReminderMessage(`remind me to ${reminderText} ${messageText}`);
+            
+            if (parsedTime && parsedTime.remind_at) {
+              const reminder = await createReminder(
+                user.id,
+                reminderText,
+                parsedTime.remind_at,
+                parsedTime.repeat_type
+              );
+              
+              await sendTelegramReminderConfirmation(
+                chatId,
+                reminderText,
+                parsedTime.formatted_date,
+                parsedTime.formatted_time,
+                parsedTime.repeat_type
+              );
+              
+              clearUserState(chatId);
+            } else {
+              await sendTelegramMessage(chatId, "I couldn't understand that time. Please try again with a format like: every day at 9PM or tomorrow 3PM");
+            }
+          } catch (error) {
+            console.error('[TELEGRAM ERROR]:', error);
+            await sendTelegramMessage(chatId, "Sorry, I couldn't process that time.");
+          }
+          
+        } else if (userState && userState.state === 'waiting_custom_reminder') {
+          // User provided custom reminder text
+          console.log('[TELEGRAM] Processing custom reminder');
+          
+          try {
+            const parsedReminder = await parseReminderMessage(messageText);
+            
+            if (parsedReminder) {
+              const reminder = await createReminder(
+                user.id,
+                parsedReminder.reminder_text,
+                parsedReminder.remind_at,
+                parsedReminder.repeat_type
+              );
+              
+              await sendTelegramReminderConfirmation(
+                chatId,
+                parsedReminder.reminder_text,
+                parsedReminder.formatted_date,
+                parsedReminder.formatted_time,
+                parsedReminder.repeat_type
+              );
+              
+              clearUserState(chatId);
+            } else {
+              await sendTelegramParseErrorMessage(chatId);
+              clearUserState(chatId);
+            }
+          } catch (error) {
+            console.error('[TELEGRAM ERROR]:', error);
+            await sendTelegramParseErrorMessage(chatId);
+            clearUserState(chatId);
+          }
+          
+        } else if (userState && userState.state === 'waiting_reschedule') {
+          // User provided reschedule time
           console.log('[TELEGRAM] User in reschedule mode');
           
           try {
@@ -210,8 +343,8 @@ router.post('/webhook', async (req, res) => {
           }
           
         } else {
-          // Parse as new reminder
-          console.log('[TELEGRAM] Parsing as new reminder...');
+          // Parse as natural language reminder
+          console.log('[TELEGRAM] Parsing as natural language reminder...');
           
           try {
             const parsedReminder = await parseReminderMessage(messageText);
@@ -226,7 +359,7 @@ router.post('/webhook', async (req, res) => {
                 if (activeCount >= 3) {
                   await sendTelegramMessage(
                     chatId,
-                    "⚠️ Free plan allows only 3 reminders. Upgrade to Personal plan for ₹49/month — send UPGRADE to get the payment link"
+                    "⚠️ You've used all 3 free reminders.\nReply UPGRADE to get unlimited reminders for ₹49/month"
                   );
                   return res.status(200).json({ ok: true });
                 }

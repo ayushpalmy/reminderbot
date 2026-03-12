@@ -62,9 +62,9 @@ async function sendReminderMessage(reminder) {
   const message = `🔔 Reminder: ${reminder.reminder_text}
 
 Reply with:
-DONE — to mark complete
-SNOOZE — to remind in 2 hours
-RESCHEDULE — to set a new time`;
+1 or DONE — mark complete
+2 or SNOOZE — remind in 2 hours
+3 or RESCHEDULE — set new time`;
 
   try {
     // Check if user has Telegram or WhatsApp
