@@ -6,7 +6,7 @@ Simple password-protected admin dashboard showing key metrics and user data.
 
 ### Dashboard URL
 ```
-https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/admin
+https://gemini-reminder-bot.preview.emergentagent.com/admin
 ```
 
 ### Authentication
@@ -195,7 +195,7 @@ Status: ✓
 
 ### From Browser
 ```
-1. Navigate to: https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/admin
+1. Navigate to: https://gemini-reminder-bot.preview.emergentagent.com/admin
 
 2. Browser will prompt for authentication:
    Username: (anything, e.g., "admin")
@@ -206,7 +206,7 @@ Status: ✓
 
 ### From Command Line
 ```bash
-curl -u "admin:admin123" https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/admin
+curl -u "admin:admin123" https://gemini-reminder-bot.preview.emergentagent.com/admin
 ```
 
 ### Using Postman/Insomnia

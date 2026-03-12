@@ -1,4 +1,4 @@
-const { pool } = require('../config/db');
+const { getDb, ObjectId } = require('../config/db');
 const moment = require('moment-timezone');
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Kolkata';
@@ -9,12 +9,12 @@ const userStates = new Map();
 
 /**
  * Set user state (e.g., waiting for reschedule time)
- * @param {string} phoneNumber 
+ * @param {string} identifier - phone number or telegram chat id
  * @param {string} state - 'waiting_reschedule' or null
  * @param {Object} data - Additional state data
  */
-function setUserState(phoneNumber, state, data = {}) {
-  userStates.set(phoneNumber, {
+function setUserState(identifier, state, data = {}) {
+  userStates.set(identifier, {
     state,
     data,
     timestamp: Date.now()
@@ -23,15 +23,15 @@ function setUserState(phoneNumber, state, data = {}) {
 
 /**
  * Get user state
- * @param {string} phoneNumber 
+ * @param {string} identifier - phone number or telegram chat id
  * @returns {Object|null}
  */
-function getUserState(phoneNumber) {
-  const state = userStates.get(phoneNumber);
+function getUserState(identifier) {
+  const state = userStates.get(identifier);
   
   // Clear state after 10 minutes
   if (state && Date.now() - state.timestamp > 600000) {
-    userStates.delete(phoneNumber);
+    userStates.delete(identifier);
     return null;
   }
   
@@ -40,27 +40,27 @@ function getUserState(phoneNumber) {
 
 /**
  * Clear user state
- * @param {string} phoneNumber 
+ * @param {string} identifier - phone number or telegram chat id
  */
-function clearUserState(phoneNumber) {
-  userStates.delete(phoneNumber);
+function clearUserState(identifier) {
+  userStates.delete(identifier);
 }
 
 /**
  * Get most recently sent reminder for a user
- * @param {number} userId 
+ * @param {string} userId 
  * @returns {Promise<Object|null>}
  */
 async function getMostRecentReminder(userId) {
   try {
-    const result = await pool.query(
-      `SELECT * FROM reminders 
-       WHERE user_id = $1 AND is_done = false 
-       ORDER BY last_sent_at DESC NULLS LAST, created_at DESC 
-       LIMIT 1`,
-      [userId]
-    );
-    return result.rows[0] || null;
+    const db = getDb();
+    const reminder = await db.collection('reminders')
+      .findOne(
+        { user_id: userId, is_done: false },
+        { sort: { last_sent_at: -1, created_at: -1 } }
+      );
+    
+    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
   } catch (error) {
     console.error('Error getting most recent reminder:', error);
     throw error;
@@ -69,26 +69,25 @@ async function getMostRecentReminder(userId) {
 
 /**
  * Get all active reminders for a user with formatting
- * @param {number} userId 
+ * @param {string} userId 
  * @returns {Promise<Array>}
  */
 async function getActiveRemindersFormatted(userId) {
   try {
-    const result = await pool.query(
-      `SELECT * FROM reminders 
-       WHERE user_id = $1 AND is_done = false 
-       ORDER BY remind_at ASC`,
-      [userId]
-    );
+    const db = getDb();
+    const reminders = await db.collection('reminders')
+      .find({ user_id: userId, is_done: false })
+      .sort({ remind_at: 1 })
+      .toArray();
     
-    return result.rows.map((reminder, index) => {
+    return reminders.map((reminder, index) => {
       const remindTime = moment.tz(reminder.remind_at, TIMEZONE);
       const formatted = remindTime.format('Do MMM, h:mm A');
       const repeatInfo = reminder.repeat_type !== 'once' ? ` (${reminder.repeat_type})` : '';
       
       return {
         number: index + 1,
-        id: reminder.id,
+        id: reminder._id.toString(),
         text: reminder.reminder_text,
         time: formatted,
         repeat: repeatInfo,
@@ -103,17 +102,19 @@ async function getActiveRemindersFormatted(userId) {
 
 /**
  * Delete a reminder by ID
- * @param {number} reminderId 
- * @param {number} userId - For security check
+ * @param {string} reminderId 
+ * @param {string} userId - For security check
  * @returns {Promise<boolean>}
  */
 async function deleteReminder(reminderId, userId) {
   try {
-    const result = await pool.query(
-      'DELETE FROM reminders WHERE id = $1 AND user_id = $2 RETURNING *',
-      [reminderId, userId]
-    );
-    return result.rowCount > 0;
+    const db = getDb();
+    const result = await db.collection('reminders').deleteOne({
+      _id: new ObjectId(reminderId),
+      user_id: userId
+    });
+    
+    return result.deletedCount > 0;
   } catch (error) {
     console.error('Error deleting reminder:', error);
     throw error;
@@ -122,17 +123,20 @@ async function deleteReminder(reminderId, userId) {
 
 /**
  * Update reminder time
- * @param {number} reminderId 
+ * @param {string} reminderId 
  * @param {Date} newRemindAt 
  * @returns {Promise<Object>}
  */
 async function updateReminderTime(reminderId, newRemindAt) {
   try {
-    const result = await pool.query(
-      'UPDATE reminders SET remind_at = $1 WHERE id = $2 RETURNING *',
-      [newRemindAt, reminderId]
+    const db = getDb();
+    await db.collection('reminders').updateOne(
+      { _id: new ObjectId(reminderId) },
+      { $set: { remind_at: new Date(newRemindAt) } }
     );
-    return result.rows[0];
+    
+    const reminder = await db.collection('reminders').findOne({ _id: new ObjectId(reminderId) });
+    return reminder ? { ...reminder, id: reminder._id.toString() } : null;
   } catch (error) {
     console.error('Error updating reminder time:', error);
     throw error;

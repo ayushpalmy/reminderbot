@@ -1,20 +1,24 @@
-const { pool } = require('../config/db');
+const { getDb, ObjectId } = require('../config/db');
 const moment = require('moment-timezone');
 
 /**
  * Update user's plan type
- * @param {number} userId 
+ * @param {string} userId 
  * @param {string} planType 
  * @returns {Promise<Object>}
  */
 async function updateUserPlan(userId, planType) {
   try {
-    const result = await pool.query(
-      'UPDATE users SET plan_type = $1 WHERE id = $2 RETURNING *',
-      [planType, userId]
+    const db = getDb();
+    await db.collection('users').updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { plan_type: planType } }
     );
+    
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
     console.log(`[SUBSCRIPTION] ✓ Updated user ${userId} to plan: ${planType}`);
-    return result.rows[0];
+    
+    return user ? { ...user, id: user._id.toString() } : null;
   } catch (error) {
     console.error('[SUBSCRIPTION] Error updating user plan:', error);
     throw error;
@@ -23,7 +27,7 @@ async function updateUserPlan(userId, planType) {
 
 /**
  * Create or update subscription record
- * @param {number} userId 
+ * @param {string} userId 
  * @param {string} plan 
  * @param {string} status 
  * @param {string} paymentId - Razorpay payment ID
@@ -31,36 +35,47 @@ async function updateUserPlan(userId, planType) {
  */
 async function createSubscription(userId, plan, status, paymentId = null) {
   try {
+    const db = getDb();
     const startedAt = new Date();
     const expiresAt = moment().add(30, 'days').toDate();
     
     // Check if subscription exists
-    const existing = await pool.query(
-      'SELECT * FROM subscriptions WHERE user_id = $1 ORDER BY started_at DESC LIMIT 1',
-      [userId]
-    );
+    const existing = await db.collection('subscriptions')
+      .findOne({ user_id: userId }, { sort: { started_at: -1 } });
     
-    if (existing.rows.length > 0) {
+    if (existing) {
       // Update existing subscription
-      const result = await pool.query(
-        `UPDATE subscriptions 
-         SET plan = $1, status = $2, started_at = $3, expires_at = $4 
-         WHERE user_id = $5 
-         RETURNING *`,
-        [plan, status, startedAt, expiresAt, userId]
+      await db.collection('subscriptions').updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            plan: plan,
+            status: status,
+            started_at: startedAt,
+            expires_at: expiresAt,
+            payment_id: paymentId
+          }
+        }
       );
       console.log(`[SUBSCRIPTION] ✓ Updated subscription for user ${userId}`);
-      return result.rows[0];
+      
+      const updated = await db.collection('subscriptions').findOne({ _id: existing._id });
+      return { ...updated, id: updated._id.toString() };
     } else {
       // Create new subscription
-      const result = await pool.query(
-        `INSERT INTO subscriptions (user_id, plan, status, started_at, expires_at) 
-         VALUES ($1, $2, $3, $4, $5) 
-         RETURNING *`,
-        [userId, plan, status, startedAt, expiresAt]
-      );
+      const subscription = {
+        user_id: userId,
+        plan: plan,
+        status: status,
+        started_at: startedAt,
+        expires_at: expiresAt,
+        payment_id: paymentId
+      };
+      
+      const result = await db.collection('subscriptions').insertOne(subscription);
       console.log(`[SUBSCRIPTION] ✓ Created subscription for user ${userId}`);
-      return result.rows[0];
+      
+      return { ...subscription, id: result.insertedId.toString() };
     }
   } catch (error) {
     console.error('[SUBSCRIPTION] Error creating/updating subscription:', error);
@@ -70,19 +85,19 @@ async function createSubscription(userId, plan, status, paymentId = null) {
 
 /**
  * Get active subscription for user
- * @param {number} userId 
+ * @param {string} userId 
  * @returns {Promise<Object|null>}
  */
 async function getActiveSubscription(userId) {
   try {
-    const result = await pool.query(
-      `SELECT * FROM subscriptions 
-       WHERE user_id = $1 AND status = 'active' 
-       ORDER BY started_at DESC 
-       LIMIT 1`,
-      [userId]
-    );
-    return result.rows[0] || null;
+    const db = getDb();
+    const subscription = await db.collection('subscriptions')
+      .findOne(
+        { user_id: userId, status: 'active' },
+        { sort: { started_at: -1 } }
+      );
+    
+    return subscription ? { ...subscription, id: subscription._id.toString() } : null;
   } catch (error) {
     console.error('[SUBSCRIPTION] Error getting active subscription:', error);
     throw error;

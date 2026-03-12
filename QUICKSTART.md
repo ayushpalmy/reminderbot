@@ -4,7 +4,7 @@
 
 ### Your Webhook URL (for Meta Dashboard)
 ```
-https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/api/webhook
+https://gemini-reminder-bot.preview.emergentagent.com/api/webhook
 ```
 
 ### Your Webhook Verification Token
@@ -45,7 +45,7 @@ sudo supervisorctl restart backend
 2. Click "Edit" next to Webhook
 3. Enter Callback URL:
    ```
-   https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/api/webhook
+   https://gemini-reminder-bot.preview.emergentagent.com/api/webhook
    ```
 4. Enter Verify Token:
    ```
@@ -58,12 +58,12 @@ sudo supervisorctl restart backend
 
 ### Test API
 ```bash
-curl https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/api
+curl https://gemini-reminder-bot.preview.emergentagent.com/api
 ```
 
 ### Test Webhook Verification
 ```bash
-curl "https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/api/webhook?hub.mode=subscribe&hub.verify_token=verify_token_8f9a2b3c4d5e6f7g8h9i0j1k2l3m4n5o&hub.challenge=test_123"
+curl "https://gemini-reminder-bot.preview.emergentagent.com/api/webhook?hub.mode=subscribe&hub.verify_token=verify_token_8f9a2b3c4d5e6f7g8h9i0j1k2l3m4n5o&hub.challenge=test_123"
 ```
 
 ### View Logs

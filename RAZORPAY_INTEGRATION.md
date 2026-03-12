@@ -284,7 +284,7 @@ ON CONFLICT ...;
 ### 2. Configure Webhook
 1. Go to Settings > Webhooks
 2. Create new webhook
-3. URL: `https://your-domain.preview.emergentagent.com/api/razorpay/webhook`
+3. URL: `https://gemini-reminder-bot.preview.emergentagent.com/api/razorpay/webhook`
 4. Events: Select "payment_link.paid"
 5. Generate webhook secret
 6. Save webhook
@@ -315,7 +315,7 @@ sudo supervisorctl restart backend
 ## 📋 Webhook URL for Razorpay Dashboard
 
 ```
-https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/api/razorpay/webhook
+https://gemini-reminder-bot.preview.emergentagent.com/api/razorpay/webhook
 ```
 
 **Events to subscribe:**

@@ -7,6 +7,7 @@ const { initDatabase } = require('./config/db');
 const { initializeScheduler } = require('./services/reminderScheduler');
 const { initializeKeepalive } = require('./services/keepalive');
 const webhookRoutes = require('./routes/webhook');
+const telegramWebhookRoutes = require('./routes/telegramWebhook');
 const testRoutes = require('./routes/test');
 const razorpayWebhookRoutes = require('./routes/razorpayWebhook');
 const adminRoutes = require('./routes/admin');
@@ -38,17 +39,19 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/telegram', telegramWebhookRoutes);
 app.use('/api/test', testRoutes);
-app.use('/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Root endpoint
 app.get('/api', (req, res) => {
   res.json({ 
-    message: 'WhatsApp Reminder Bot API',
+    message: 'WhatsApp & Telegram Reminder Bot API',
     status: 'running',
     endpoints: {
-      webhook_verify: 'GET /api/webhook',
-      webhook_receive: 'POST /api/webhook'
+      whatsapp_webhook_verify: 'GET /api/webhook',
+      whatsapp_webhook_receive: 'POST /api/webhook',
+      telegram_webhook: 'POST /api/telegram/webhook'
     }
   });
 });

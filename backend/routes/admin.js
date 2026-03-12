@@ -187,7 +187,8 @@ router.get('/', requireAuth, async (req, res) => {
       <thead>
         <tr>
           <th>ID</th>
-          <th>Phone Number</th>
+          <th>Contact</th>
+          <th>Platform</th>
           <th>Plan Type</th>
           <th>Joined Date</th>
         </tr>
@@ -196,7 +197,8 @@ router.get('/', requireAuth, async (req, res) => {
         ${recentUsers.map(user => `
           <tr>
             <td>${user.id}</td>
-            <td>${user.phone_number}</td>
+            <td>${user.phone_number || user.telegram_chat_id || '-'}</td>
+            <td>${user.telegram_chat_id ? '📱 Telegram' : '💬 WhatsApp'}</td>
             <td>
               <span class="plan-badge plan-${user.plan_type}">
                 ${user.plan_type.toUpperCase()}

@@ -28,7 +28,7 @@ Users can send messages like:
 
 ### Production URL
 ```
-https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com
+https://gemini-reminder-bot.preview.emergentagent.com
 ```
 
 ### Webhook (for Meta)
@@ -72,7 +72,7 @@ sudo supervisorctl restart backend
 2. Navigate to: WhatsApp > Configuration
 3. Click "Edit" next to Webhook
 4. Enter:
-   - **Callback URL:** `https://d1d7ab40-17e9-4a9f-adf3-cad77916889c.preview.emergentagent.com/api/webhook`
+   - **Callback URL:** `https://gemini-reminder-bot.preview.emergentagent.com/api/webhook`
    - **Verify Token:** `verify_token_8f9a2b3c4d5e6f7g8h9i0j1k2l3m4n5o`
 5. Subscribe to: `messages`
 
