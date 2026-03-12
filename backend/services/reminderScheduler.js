@@ -70,6 +70,11 @@ Reply with:
     // Check if user has Telegram or WhatsApp
     if (reminder.telegram_chat_id) {
       await sendTelegramMessage(reminder.telegram_chat_id, message);
+      
+      // Set conversation state for Telegram users
+      const { setUserState } = require('./conversationService');
+      setUserState(reminder.telegram_chat_id, 'waiting_reminder_action', {});
+      
       console.log(`[SCHEDULER] ✓ Sent reminder ${reminder.id} to Telegram chat ${reminder.telegram_chat_id}`);
       return true;
     } else if (reminder.phone_number) {
